@@ -1,0 +1,56 @@
+spec_version: "0.1.0"
+name: pm-brainstorm-swarm
+version: 2.0.0
+description: >
+  A 5-agent PM brainstorming swarm that debates a feature from
+  Visionary, Critic, Data, User, and Technical PM perspectives.
+  Uses pm-skills frameworks: /discover, /strategy, /pre-mortem,
+  /north-star, opportunity-solution-tree, RICE, JTBD.
+
+model:
+  preferred: claude-opus-4-20250514
+  sub_agents:
+    visionary:    claude-opus-4-20250514
+    critic:       claude-sonnet-4-20250514
+    data_analyst: claude-sonnet-4-20250514
+    user_advocate: claude-sonnet-4-20250514
+    technical_pm: claude-sonnet-4-20250514
+    synthesizer:  claude-opus-4-20250514
+
+skills:
+  pm_skills: phuryn/pm-skills   # Full marketplace
+  active:
+    - brainstorm-ideas-existing
+    - identify-assumptions-existing
+    - prioritize-assumptions
+    - opportunity-solution-tree
+    - north-star-metric
+    - pre-mortem
+    - market-sizing
+    - user-personas
+    - customer-journey-map
+    - prioritize-features
+
+compliance:
+  segregation_of_duties:
+    roles: [maker]
+    enforcement: strict
+
+memory:
+  runtime: agents/pm-brainstorm/memory/runtime/
+  files:
+    dailylog: dailylog.md
+    key_decisions: key-decisions.md
+    context: context.md
+
+deliverable:
+  schema: PMBrainstormDeliverable
+  required_fields:
+    - consensus.build_decision
+    - consensus.confidence
+    - pm_memo
+    - brainstorm_rounds
+  validation:
+    min_rounds: 5
+    min_fit_score_for_proceed: 6.0
+    max_kickbacks: 3

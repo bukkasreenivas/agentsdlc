@@ -1,0 +1,10 @@
+# AgentSDLC — ignore generated and secret files within .agentsdlc/
+node_modules/
+dist/
+.env
+qa-videos/
+backups/
+memory/runtime/*.json
+memory/runtime/*.log.md
+agents/*/memory/runtime/*.json
+agents/*/memory/runtime/*.md

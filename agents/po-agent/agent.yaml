@@ -1,0 +1,21 @@
+spec_version: "0.1.0"
+name: po-agent
+version: 2.0.0
+description: >
+  Product Owner Agent. Converts PM Memo into Jira Epic + User Stories
+  using pm-skills user-stories, job-stories, wwa, and test-scenarios skills.
+  Opens human gate PR for PO review. Handles kickback from reviewer comment.
+model:
+  preferred: claude-sonnet-4-20250514
+compliance:
+  segregation_of_duties:
+    roles: [maker]
+    enforcement: strict
+memory:
+  runtime: agents/po-agent/memory/runtime/
+deliverable:
+  schema: PODeliverable
+  required_fields: [epic_key, user_stories]
+  validation:
+    min_stories: 2
+    max_kickbacks: 3

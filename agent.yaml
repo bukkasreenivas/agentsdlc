@@ -1,0 +1,57 @@
+spec_version: "0.1.0"
+name: agent-sdlc
+version: 2.0.0
+description: >
+  LangGraph-orchestrated multi-agent SDLC pipeline.
+  Covers PM brainstorming swarm, PO, Design, Architect,
+  Dev Swarm (FE+BE+NFR parallel), Review, CI/CD, and QA with video.
+model:
+  preferred: claude-opus-4-20250514
+  routing:
+    pm_brainstorm:  claude-opus-4-20250514
+    pm_critic:      claude-sonnet-4-20250514
+    pm_synthesizer: claude-opus-4-20250514
+    po:             claude-sonnet-4-20250514
+    design:         claude-sonnet-4-20250514
+    architect:      claude-opus-4-20250514
+    frontend_dev:   gemini-2.0-flash
+    backend_dev:    claude-sonnet-4-20250514
+    nfr:            claude-haiku-4-5
+    reviewer:       claude-opus-4-20250514
+    cicd:           claude-haiku-4-5
+    qa:             claude-sonnet-4-20250514
+
+compliance:
+  segregation_of_duties:
+    roles:
+      - id: maker
+        description: Creates proposals and code
+        permissions: [create, submit, commit]
+      - id: checker
+        description: Reviews and approves
+        permissions: [review, approve, reject, comment]
+      - id: executor
+        description: Deploys and runs tests
+        permissions: [deploy, execute, record]
+    conflicts:
+      - [maker, checker]          # dev agents cannot approve own PRs
+      - [checker, executor]       # reviewer cannot trigger deploy
+    assignments:
+      pm-brainstorm:    [maker]
+      po-agent:         [maker]
+      architect-agent:  [maker]
+      frontend-dev:     [maker]
+      backend-dev:      [maker]
+      nfr-agent:        [checker]
+      review-agent:     [checker]
+      cicd-agent:       [executor]
+      qa-agent:         [executor]
+    enforcement: strict
+
+integrations:
+  - jira
+  - figma
+  - github
+  - bitbucket
+  - slack
+  - playwright

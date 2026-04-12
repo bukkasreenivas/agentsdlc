@@ -1,0 +1,53 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AgentSDLC: Run Feature Pipeline",
+      "type": "shell",
+      "command": "npm run pipeline:feature \"${input:featureDescription}\"",
+      "options": { "cwd": "${workspaceFolder}/.agentsdlc" },
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "new", "clear": true }
+    },
+    {
+      "label": "AgentSDLC: Run Bug Pipeline",
+      "type": "shell",
+      "command": "npm run pipeline:bug \"${input:bugDescription}\"",
+      "options": { "cwd": "${workspaceFolder}/.agentsdlc" },
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "AgentSDLC: Check Provider",
+      "type": "shell",
+      "command": "npm run provider:check",
+      "options": { "cwd": "${workspaceFolder}/.agentsdlc" },
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "AgentSDLC: Upgrade (safe)",
+      "type": "shell",
+      "command": "node scripts/upgrade.js --zip \"${input:zipPath}\"",
+      "options": { "cwd": "${workspaceFolder}/.agentsdlc" },
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "AgentSDLC: Upgrade dry run",
+      "type": "shell",
+      "command": "node scripts/upgrade.js --zip \"${input:zipPath}\" --dry-run",
+      "options": { "cwd": "${workspaceFolder}/.agentsdlc" },
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "AgentSDLC: Remove completely",
+      "type": "shell",
+      "command": "node .agentsdlc/scripts/remove.js",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "shared" }
+    }
+  ],
+  "inputs": [
+    { "id": "featureDescription", "type": "promptString", "description": "Feature to build" },
+    { "id": "bugDescription",     "type": "promptString", "description": "Bug summary" },
+    { "id": "zipPath",            "type": "promptString", "description": "Full path to new agentsdlc.zip (e.g. C:\\Users\\bukka\\Downloads\\agentsdlc.zip)" }
+  ]
+}
