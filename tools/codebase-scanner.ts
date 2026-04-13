@@ -33,8 +33,11 @@ export interface RelevantFile {
 }
 
 const IGNORE_DIRS = new Set([
+  // dependency / build artefacts
   "node_modules", ".git", "dist", "build", ".next", "__pycache__",
   ".turbo", "coverage", ".nyc_output", "vendor", ".venv", "venv",
+  // AgentSDLC tooling dirs — NEVER treat the pipeline itself as the product
+  ".agentsdlc", "agent-layer", ".claude",
 ]);
 
 const IGNORE_EXTS = new Set([
@@ -111,10 +114,41 @@ function detectTechStack(repoPath: string): string[] {
     } catch {}
   }
 
-  // Python
-  if (fs.existsSync(path.join(repoPath, "requirements.txt"))) stack.push("Python");
-  if (fs.existsSync(path.join(repoPath, "pyproject.toml")))   stack.push("Python");
-  if (fs.existsSync(path.join(repoPath, "Pipfile")))          stack.push("Python/Pipenv");
+  // Also check common app subdirectories (platform/, backend/, frontend/, src/)
+  // so monorepos / nested projects are detected correctly
+  const subDirs = ["platform/backend", "platform/frontend", "platform", "backend", "frontend", "src", "app", "server"];
+  for (const sub of subDirs) {
+    const subPath = path.join(repoPath, sub);
+    if (!fs.existsSync(subPath)) continue;
+
+    // Sub-level package.json
+    const subPkg = path.join(subPath, "package.json");
+    if (fs.existsSync(subPkg)) {
+      try {
+        const pkg  = JSON.parse(fs.readFileSync(subPkg, "utf8"));
+        const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+        if (deps["react"] && !stack.includes("React"))       stack.push("React");
+        if (deps["next"]  && !stack.includes("Next.js"))     stack.push("Next.js");
+        if (deps["vue"]   && !stack.includes("Vue"))         stack.push("Vue");
+        if (deps["express"]&& !stack.includes("Express"))    stack.push("Express");
+        if (deps["fastify"]&& !stack.includes("Fastify"))    stack.push("Fastify");
+        if (deps["tailwindcss"] && !stack.includes("Tailwind CSS")) stack.push("Tailwind CSS");
+      } catch {}
+    }
+
+    // Sub-level Python
+    if (!stack.includes("Python")) {
+      if (fs.existsSync(path.join(subPath, "requirements.txt"))) stack.push("Python/FastAPI");
+      if (fs.existsSync(path.join(subPath, "pyproject.toml")))   stack.push("Python");
+    }
+  }
+
+  // Python (root level)
+  if (!stack.some(s => s.startsWith("Python"))) {
+    if (fs.existsSync(path.join(repoPath, "requirements.txt"))) stack.push("Python");
+    if (fs.existsSync(path.join(repoPath, "pyproject.toml")))   stack.push("Python");
+    if (fs.existsSync(path.join(repoPath, "Pipfile")))          stack.push("Python/Pipenv");
+  }
 
   // Java / JVM
   if (fs.existsSync(path.join(repoPath, "pom.xml")))     stack.push("Java/Maven");
@@ -138,6 +172,7 @@ function detectTechStack(repoPath: string): string[] {
 
 function detectEntryPoints(repoPath: string): string[] {
   const candidates = [
+    // Standard root-level entries
     "src/index.ts", "src/index.tsx", "src/main.ts", "src/main.tsx",
     "src/app.ts",   "src/app.tsx",   "src/server.ts",
     "pages/_app.tsx", "pages/_app.ts",
@@ -146,6 +181,12 @@ function detectEntryPoints(repoPath: string): string[] {
     "server.ts",      "server.js",
     "main.py",        "app.py",       "manage.py",
     "cmd/main.go",    "main.go",
+    // Monorepo / nested app entries (platform/, backend/, frontend/)
+    "platform/backend/main.py",   "platform/backend/app.py",
+    "platform/frontend/src/main.jsx", "platform/frontend/src/index.jsx",
+    "platform/frontend/src/main.tsx", "platform/frontend/src/index.tsx",
+    "backend/main.py",  "backend/app.py",
+    "frontend/src/main.jsx", "frontend/src/index.jsx",
   ];
   return candidates.filter(f => fs.existsSync(path.join(repoPath, f)));
 }
@@ -154,7 +195,11 @@ function detectEntryPoints(repoPath: string): string[] {
 
 function detectDBSchema(repoPath: string): string[] {
   const found: string[] = [];
-  const searchDirs = ["prisma", "migrations", "db", "database", "schema", "src/db"];
+  const searchDirs = [
+    "prisma", "migrations", "db", "database", "schema", "src/db",
+    "platform/backend/migrations", "platform/backend/db",
+    "backend/migrations", "backend/db",
+  ];
 
   for (const dir of searchDirs) {
     const dirPath = path.join(repoPath, dir);
@@ -175,7 +220,12 @@ function detectDBSchema(repoPath: string): string[] {
 
 function detectAPIRoutes(repoPath: string): string[] {
   const found: string[] = [];
-  const routeDirs = ["src/routes", "src/api", "pages/api", "app/api", "routes", "controllers"];
+  // Check both root-level and common subdirectory patterns (monorepos)
+  const routeDirs = [
+    "src/routes", "src/api", "pages/api", "app/api", "routes", "controllers",
+    "platform/backend/routers", "platform/backend/routes", "platform/backend/controllers",
+    "backend/routers", "backend/routes", "backend/controllers",
+  ];
 
   for (const dir of routeDirs) {
     const dirPath = path.join(repoPath, dir);
@@ -315,31 +365,41 @@ function readKeyFiles(
     }
   }
 
-  // 2. CLAUDE.md / docs — may have product context
-  for (const doc of ["CLAUDE.md", "docs/overview.md", "docs/README.md", "PROGRESS.md"]) {
+  // 2. Product docs — look in platform subdirs first (monorepo-aware).
+  //    DELIBERATELY skip CLAUDE.md — it contains Claude Code instructions, not product description.
+  const docCandidates = [
+    "platform/README.md", "platform/backend/README.md", "platform/docs/overview.md",
+    "docs/overview.md",   "docs/README.md",  "PROGRESS.md",
+  ];
+  for (const doc of docCandidates) {
     const full = path.join(repoPath, doc);
     if (fs.existsSync(full)) {
       const content = safeReadExcerpt(full, 800);
-      if (content) excerpts.push({ path: doc, content, reason: "Project documentation / context file" });
+      if (content) excerpts.push({ path: doc, content, reason: "Project documentation" });
     }
   }
 
   // 3. Entry points — main.py, app.py, index.ts etc show app bootstrap & purpose
-  for (const ep of entryPoints.slice(0, 3)) {
+  for (const ep of entryPoints.slice(0, 4)) {
     const full = path.join(repoPath, ep);
     const content = safeReadExcerpt(full, 600);
     if (content) excerpts.push({ path: ep, content, reason: "Application entry point — shows bootstrapped modules and purpose" });
   }
 
   // 4. First few API route/router files — show what endpoints exist
-  for (const route of apiRoutes.slice(0, 4)) {
+  for (const route of apiRoutes.slice(0, 5)) {
     const full = fs.existsSync(route) ? route : path.join(repoPath, route);
     const content = safeReadExcerpt(full, 400);
     if (content) excerpts.push({ path: route, content, reason: "API route file — shows existing endpoints" });
   }
 
   // 5. Models / schema — what data this product manages
-  for (const modelFile of ["models.py", "src/models/index.ts", "prisma/schema.prisma", "database.py"]) {
+  const modelCandidates = [
+    "platform/backend/models.py", "platform/backend/database.py",
+    "models.py", "database.py",
+    "src/models/index.ts", "prisma/schema.prisma",
+  ];
+  for (const modelFile of modelCandidates) {
     const full = path.join(repoPath, modelFile);
     if (fs.existsSync(full)) {
       const content = safeReadExcerpt(full, 600);
