@@ -1,7 +1,6 @@
 // tools/codebase-scanner.ts
-// v2 — Semantic codebase scanning with relevance scoring.
-// Reads file tree, detects tech stack, finds entry points,
-// and scores files for relevance to the feature being built.
+// v3 — Reads actual file contents so agents understand the real product,
+// not just the file tree. Prevents hallucination of wrong product context.
 
 import * as fs   from "fs";
 import * as path from "path";
@@ -16,6 +15,14 @@ export interface CodebaseContext {
   testPatterns:  string[];        // Detected test file patterns
   ciFiles:       string[];        // CI/CD config files found
   summary:       string;          // One-paragraph codebase description
+  keyFileExcerpts: KeyFileExcerpt[]; // Actual content from README + entry points + key routes
+  projectIdentity: string;        // What this product actually does (from README + entry points)
+}
+
+export interface KeyFileExcerpt {
+  path:    string;
+  content: string;  // Up to 600 chars
+  reason:  string;  // Why this file was chosen
 }
 
 export interface RelevantFile {
@@ -253,6 +260,92 @@ function walkDir(dir: string, callback: (filePath: string) => void, maxDepth: nu
   } catch {}
 }
 
+// ── Key file reader ───────────────────────────────────────────────────────────
+// Reads actual file contents so agents understand the REAL product, not just
+// its file tree. This is the primary defence against hallucination.
+
+function safeReadExcerpt(filePath: string, maxChars = 600): string {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    return content.slice(0, maxChars).replace(/\r\n/g, "\n");
+  } catch {
+    return "";
+  }
+}
+
+function readKeyFiles(
+  repoPath:    string,
+  entryPoints: string[],
+  apiRoutes:   string[],
+): KeyFileExcerpt[] {
+  const excerpts: KeyFileExcerpt[] = [];
+
+  // 1. README — the most direct description of what the product is
+  for (const readme of ["README.md", "readme.md", "README.txt", "README"]) {
+    const full = path.join(repoPath, readme);
+    if (fs.existsSync(full)) {
+      const content = safeReadExcerpt(full, 1500);
+      if (content) excerpts.push({ path: readme, content, reason: "Project README — describes what this product is" });
+      break;
+    }
+  }
+
+  // 2. CLAUDE.md / docs — may have product context
+  for (const doc of ["CLAUDE.md", "docs/overview.md", "docs/README.md", "PROGRESS.md"]) {
+    const full = path.join(repoPath, doc);
+    if (fs.existsSync(full)) {
+      const content = safeReadExcerpt(full, 800);
+      if (content) excerpts.push({ path: doc, content, reason: "Project documentation / context file" });
+    }
+  }
+
+  // 3. Entry points — main.py, app.py, index.ts etc show app bootstrap & purpose
+  for (const ep of entryPoints.slice(0, 3)) {
+    const full = path.join(repoPath, ep);
+    const content = safeReadExcerpt(full, 600);
+    if (content) excerpts.push({ path: ep, content, reason: "Application entry point — shows bootstrapped modules and purpose" });
+  }
+
+  // 4. First few API route/router files — show what endpoints exist
+  for (const route of apiRoutes.slice(0, 4)) {
+    const full = fs.existsSync(route) ? route : path.join(repoPath, route);
+    const content = safeReadExcerpt(full, 400);
+    if (content) excerpts.push({ path: route, content, reason: "API route file — shows existing endpoints" });
+  }
+
+  // 5. Models / schema — what data this product manages
+  for (const modelFile of ["models.py", "src/models/index.ts", "prisma/schema.prisma", "database.py"]) {
+    const full = path.join(repoPath, modelFile);
+    if (fs.existsSync(full)) {
+      const content = safeReadExcerpt(full, 600);
+      if (content) excerpts.push({ path: modelFile, content, reason: "Data model — shows what entities this product manages" });
+      break;
+    }
+  }
+
+  // 6. package.json / pyproject.toml description field
+  const pkgPath = path.join(repoPath, "package.json");
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      if (pkg.description) {
+        excerpts.push({ path: "package.json", content: `name: ${pkg.name}\ndescription: ${pkg.description}`, reason: "Package description" });
+      }
+    } catch {}
+  }
+
+  return excerpts;
+}
+
+function buildProjectIdentity(excerpts: KeyFileExcerpt[], techStack: string[]): string {
+  const parts: string[] = [`Tech stack: ${techStack.join(", ")}.`];
+  for (const e of excerpts.slice(0, 4)) {
+    // Take only first 300 chars per file to keep identity concise
+    parts.push(`\n[${e.path}]\n${e.content.slice(0, 300)}`);
+  }
+  return parts.join("\n");
+}
+
 // ── Main scanner ──────────────────────────────────────────────────────────────
 
 export async function scanCodebase(
@@ -290,6 +383,9 @@ export async function scanCodebase(
     relevantFiles.splice(10); // Keep top 10
   }
 
+  const keyFileExcerpts = readKeyFiles(repoPath, entryPoints, apiRoutes);
+  const projectIdentity = buildProjectIdentity(keyFileExcerpts, techStack);
+
   const summary = [
     `${techStack.join(", ")} project.`,
     entryPoints.length > 0 ? `Entry points: ${entryPoints.join(", ")}.` : "",
@@ -308,5 +404,7 @@ export async function scanCodebase(
     testPatterns: [testPattern],
     ciFiles,
     summary,
+    keyFileExcerpts,
+    projectIdentity,
   };
 }
