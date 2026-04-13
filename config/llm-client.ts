@@ -61,10 +61,12 @@ function detectProvider(): Provider {
 }
 
 // ── Copilot proxy auto-start ──────────────────────────────────────────────────
+// Lazy: only started the first time copilot is actually needed in failover.
+// This avoids EINVAL / deprecation noise when Bedrock is healthy.
 
 let _copilotProc: ChildProcess | null = null;
 let _copilotReadyPromise: Promise<void> | null = null;
-let _copilotProxyFailed  = false;   // set true if proxy couldn't start
+let _copilotProxyFailed  = false;
 
 function isPortOpen(port: number, host = "127.0.0.1"): Promise<boolean> {
   return new Promise(resolve => {
@@ -83,16 +85,21 @@ async function ensureCopilotProxy(): Promise<void> {
     return;
   }
 
-  // On Windows use the .cmd wrapper directly (avoids shell:true deprecation warning)
-  const isWin   = process.platform === "win32";
-  const binName = isWin ? "copilot-api.cmd" : "copilot-api";
-  const binPath = path.resolve(__dirname, `../node_modules/.bin/${binName}`);
   console.log(`[LLM] Auto-starting copilot-api proxy on :${port} ...`);
 
-  _copilotProc = spawn(binPath, ["start", "--port", String(port)], {
+  // On Windows, .cmd files require cmd.exe /c — spawning them directly
+  // with shell:false causes EINVAL; shell:true triggers DEP0190.
+  const isWin   = process.platform === "win32";
+  const binPath = path.resolve(__dirname, "../node_modules/.bin/copilot-api");
+  const cmd     = isWin ? (process.env.ComSpec ?? "cmd.exe") : binPath;
+  const args    = isWin
+    ? ["/c", `"${binPath}.cmd"`, "start", "--port", String(port)]
+    : ["start", "--port", String(port)];
+
+  _copilotProc = spawn(cmd, args, {
     env:      { ...process.env },
     stdio:    ["ignore", "pipe", "pipe"],
-    shell:    false,   // never use shell — avoids DEP0190 on Windows
+    shell:    false,
     detached: false,
   });
 
@@ -122,12 +129,12 @@ async function ensureCopilotProxy(): Promise<void> {
   throw new Error(`[LLM] copilot-api proxy did not start within 15s on :${port}`);
 }
 
-if (hasCopilotProxy()) {
+/** Call once before using copilot. Idempotent — safe to call multiple times. */
+function startCopilotProxyOnce(): void {
+  if (_copilotReadyPromise || _copilotProxyFailed) return;
   _copilotReadyPromise = ensureCopilotProxy().catch(err => {
-    // Do NOT re-throw — a failed proxy must not crash the process.
-    // Set the flag so failover skips copilot gracefully.
     _copilotProxyFailed = true;
-    console.warn(`[LLM] Copilot proxy unavailable (will skip in failover): ${(err as Error).message}`);
+    console.warn(`[LLM] Copilot proxy unavailable (skipping): ${(err as Error).message}`);
   });
 }
 
@@ -207,7 +214,8 @@ export function resolveModel(model: string): string {
 
 export async function withFailover<T>(fn: (c: Anthropic) => Promise<T>, label = "call"): Promise<T> {
   if (process.env.LLM_PROVIDER) {
-    if (process.env.LLM_PROVIDER === "copilot" && _copilotReadyPromise) {
+    if (process.env.LLM_PROVIDER === "copilot" && hasCopilotProxy()) {
+      startCopilotProxyOnce();
       await _copilotReadyPromise;
     }
     return fn(createClient());
@@ -219,11 +227,14 @@ export async function withFailover<T>(fn: (c: Anthropic) => Promise<T>, label = 
   for (const p of order) {
     if (p === "bedrock"   && !hasBedrockCredentials()) continue;
     if (p === "copilot"   && !hasCopilotProxy())       continue;
-    if (p === "copilot"   && _copilotProxyFailed)      continue;  // proxy didn't start
+    if (p === "copilot"   && _copilotProxyFailed)      continue;
     if (p === "anthropic" && !hasAnthropicKey())        continue;
     try {
-      if (p === "copilot" && _copilotReadyPromise) {
+      if (p === "copilot") {
+        // Start proxy lazily — only when Bedrock has already failed
+        startCopilotProxyOnce();
         await _copilotReadyPromise;
+        if (_copilotProxyFailed) continue;  // proxy failed during this await
       }
       _client = null; _provider = null;
       return await fn(createClient(p));
