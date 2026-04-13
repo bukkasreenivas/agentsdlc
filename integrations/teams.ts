@@ -16,7 +16,7 @@ const { teams: cfg } = integrations;
 
 async function postCard(webhookUrl: string, card: AdaptiveCard): Promise<void> {
   if (!webhookUrl) {
-    console.log(`[Teams stub] Would send card: ${card.body?.[0]?.text ?? "(no title)"}`);
+    console.log(`[Teams stub] Would send card: ${(card.body?.[0] as any)?.text ?? "(no title)"}`);
     return;
   }
 

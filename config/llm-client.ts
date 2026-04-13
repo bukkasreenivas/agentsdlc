@@ -141,7 +141,8 @@ export function createClient(force?: Provider): Anthropic {
 
   switch (provider) {
     case "bedrock": {
-      const opts: ConstructorParameters<typeof AnthropicBedrock>[0] = { awsRegion: region };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const opts: any = { awsRegion: region };
 
       if (bearer) {
         opts.awsBearerToken = bearer;

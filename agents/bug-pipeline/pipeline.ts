@@ -21,7 +21,7 @@
 //   - After Bug Verify:    QA watches verification video before closing ticket
 
 import Anthropic from "@anthropic-ai/sdk";
-import { StateGraph, END, START } from "@langchain/langgraph";
+import { StateGraph, Annotation, END, START } from "@langchain/langgraph";
 import { AGENT_MODELS }   from "../../config/agents";
 import { integrations }   from "../../config/integrations";
 import {
@@ -575,31 +575,36 @@ function routeAfterVerify(s: BugPipelineState) {
 
 // ── Graph assembly ────────────────────────────────────────────────────────────
 
+const BugGraphAnnotation = Annotation.Root({
+  bug_id:          Annotation<string>({ value: (_, b) => b, default: () => "" }),
+  bug_key:         Annotation<string | undefined>({ value: (_, b) => b, default: () => undefined }),
+  bug_summary:     Annotation<string>({ value: (_, b) => b, default: () => "" }),
+  bug_description: Annotation<string>({ value: (_, b) => b, default: () => "" }),
+  bug_severity:    Annotation<"critical" | "high" | "medium" | "low">({ value: (_, b) => b, default: () => "medium" }),
+  repo_path:       Annotation<string>({ value: (_, b) => b, default: () => process.cwd() }),
+  current_stage:   Annotation<BugStage>({ value: (_, b) => b, default: () => "triage" as BugStage }),
+  kickbacks:       Annotation<any[]>({ value: (a: any[], b: any[]) => [...a, ...b], default: () => [] }),
+  retry_counts:    Annotation<Record<string, number>>({ value: (_, b) => b, default: () => ({}) }),
+  max_retries:     Annotation<number>({ value: (_, b) => b, default: () => 3 }),
+  stage_log:       Annotation<any[]>({ value: (a: any[], b: any[]) => [...a, ...b], default: () => [] }),
+  escalated:       Annotation<boolean>({ value: (_, b) => b, default: () => false }),
+  human_approvals: Annotation<Record<string, { approved: boolean; comment?: string }>>({ value: (_, b) => b, default: () => ({}) }),
+  triage:          Annotation<any>({ value: (_, b) => b, default: () => undefined }),
+  repro_test:      Annotation<any>({ value: (_, b) => b, default: () => undefined }),
+  fix_plan:        Annotation<any>({ value: (_, b) => b, default: () => undefined }),
+  fix_pr_number:   Annotation<number | undefined>({ value: (_, b) => b, default: () => undefined }),
+  fix_pr_url:      Annotation<string | undefined>({ value: (_, b) => b, default: () => undefined }),
+  fix_branch:      Annotation<string | undefined>({ value: (_, b) => b, default: () => undefined }),
+  verification:    Annotation<any>({ value: (_, b) => b, default: () => undefined }),
+  // Optional fields from interface
+  affected_story_key: Annotation<string | undefined>({ value: (_, b) => b, default: () => undefined }),
+  stack_trace:     Annotation<string | undefined>({ value: (_, b) => b, default: () => undefined }),
+  video_url:       Annotation<string | undefined>({ value: (_, b) => b, default: () => undefined }),
+  feature_id:      Annotation<string | undefined>({ value: (_, b) => b, default: () => undefined }),
+});
+
 export function buildBugGraph() {
-  const graph = new StateGraph<BugPipelineState>({
-    channels: {
-      bug_id:          { default: () => "" },
-      bug_key:         { default: () => undefined },
-      bug_summary:     { default: () => "" },
-      bug_description: { default: () => "" },
-      bug_severity:    { default: () => "medium" as const },
-      repo_path:       { default: () => process.cwd() },
-      current_stage:   { default: () => "triage" as BugStage },
-      kickbacks:       { value: (a, b) => [...a, ...b], default: () => [] },
-      retry_counts:    { default: () => ({}) },
-      max_retries:     { default: () => 3 },
-      stage_log:       { value: (a, b) => [...a, ...b], default: () => [] },
-      escalated:       { default: () => false },
-      human_approvals: { default: () => ({}) },
-      triage:          { default: () => undefined },
-      repro_test:      { default: () => undefined },
-      fix_plan:        { default: () => undefined },
-      fix_pr_number:   { default: () => undefined },
-      fix_pr_url:      { default: () => undefined },
-      fix_branch:      { default: () => undefined },
-      verification:    { default: () => undefined },
-    },
-  });
+  const graph = new StateGraph(BugGraphAnnotation) as any;
 
   graph.addNode("triage",      runBugTriageAgent);
   graph.addNode("reproduce",   runBugReproduceAgent);
@@ -608,8 +613,8 @@ export function buildBugGraph() {
   graph.addNode("fix_review",  runFixReviewAgent);
   graph.addNode("deploy_fix",  runDeployFixAgent);
   graph.addNode("verify",      runBugVerifyAgent);
-  graph.addNode("done",        async (s) => ({ ...s, current_stage: "done" as BugStage }));
-  graph.addNode("escalate",    async (s) => ({ ...s, current_stage: "escalated" as BugStage, escalated: true }));
+  graph.addNode("done",        async (s: BugPipelineState) => ({ ...s, current_stage: "done" as BugStage }));
+  graph.addNode("escalate",    async (s: BugPipelineState) => ({ ...s, current_stage: "escalated" as BugStage, escalated: true }));
 
   graph.addEdge(START, "triage");
   graph.addConditionalEdges("triage",     routeAfterTriage,     { reproduce: "reproduce", escalate: "escalate" });
