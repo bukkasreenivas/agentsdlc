@@ -95,17 +95,10 @@ function wrapNode(
 function routeAfterPMBrainstorm(state: PipelineState): string {
   const d = state.deliverables?.pm_brainstorm?.content as any;
   if (!d) return "escalate";
-  if (d.consensus?.build_decision === "reject") return "escalate";   // PM says don't build
-  if (d.consensus?.build_decision === "modify") {
-    // Count how many times pm_brainstorm has already completed via stage_log.
-    // wrapNode doesn't increment retry_counts for routing loops, so we use
-    // stage_log as the authoritative run counter.
-    const pmRuns = (state.stage_log ?? []).filter(
-      (e: StageLogEntry) => e.stage === "pm_brainstorm" && e.event === "completed"
-    ).length;
-    if (pmRuns >= state.max_retries) return "escalate";
-    return "pm_brainstorm";  // Loop for genuine scope clarification
-  }
+  if (d.consensus?.build_decision === "reject") return "escalate";  // PM hard-rejects
+  // "modify" and "proceed" both advance to PO.
+  // Looping pm_brainstorm without human input adds no value — the PO agent
+  // and human gates handle scope refinement from here.
   return "po";
 }
 
@@ -211,12 +204,24 @@ async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
 }
 
 async function escalateNode(state: any): Promise<Partial<PipelineState>> {
-  const lastKickback = state.kickbacks[state.kickbacks.length - 1];
+  const lastKickback = (state.kickbacks ?? [])[state.kickbacks?.length - 1];
+  const lastLog      = (state.stage_log  ?? [])[state.stage_log?.length  - 1];
+
+  let reason = "Escalated — check memory/runtime/pipeline.log.md for details";
+  if (lastKickback) {
+    reason = `Max retries at ${lastKickback.stage}: ${lastKickback.detail} | Fix: ${lastKickback.actionable}`;
+  } else if (lastLog) {
+    const pmDecision = (state.deliverables?.pm_brainstorm?.content as any)?.consensus?.build_decision;
+    if (pmDecision === "reject") {
+      reason = `PM brainstorm rejected feature: ${(state.deliverables?.pm_brainstorm?.content as any)?.consensus?.agreed_scope ?? "see pm-brainstorm deliverable"}`;
+    } else {
+      reason = `Escalated from ${lastLog.stage} (${lastLog.event}): ${lastLog.detail}`;
+    }
+  }
+
   return {
     escalated: true,
-    escalation_reason: lastKickback
-      ? `Max retries exceeded at ${lastKickback.stage}: ${lastKickback.detail}`
-      : "Unknown escalation",
+    escalation_reason: reason,
     current_stage: "escalated",
   };
 }
