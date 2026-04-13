@@ -11,8 +11,8 @@
 //   - Kickback edges are first-class graph edges, not exception handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { StateGraph, END, START } from "@langchain/langgraph";
-import type { PipelineState, StageId } from "../types/state";
+import { StateGraph, Annotation, END, START } from "@langchain/langgraph";
+import type { PipelineState, StageId, KickbackRecord, StageLogEntry, Deliverable } from "../types/state";
 import { runPMBrainstormSwarm }    from "../agents/pm-brainstorm/swarm";
 import { runPOAgent }              from "../agents/po-agent/agent";
 import { runDesignAgent }          from "../agents/design-agent/agent";
@@ -29,12 +29,14 @@ import { sodCheck }                from "../orchestrator/sod";
 
 // ── Node wrappers ─────────────────────────────────────────────────────────────
 
+type NodeFn = (state: any) => Promise<Partial<PipelineState>>;
+
 function wrapNode(
   stageId: StageId,
   runFn: (state: PipelineState) => Promise<Partial<PipelineState>>,
   options: { sod_role?: "maker" | "checker" | "executor" } = {}
-) {
-  return async (state: PipelineState): Promise<Partial<PipelineState>> => {
+): NodeFn {
+  return async (state: any): Promise<Partial<PipelineState>> => {
     // SOD check before execution
     if (options.sod_role) {
       const sodResult = sodCheck(stageId, options.sod_role, state);
@@ -159,7 +161,7 @@ function routeAfterQA(state: PipelineState): string {
 
 // ── Human gate nodes (open a GitHub PR branch, wait for approval) ─────────────
 
-async function poGateNode(state: PipelineState): Promise<Partial<PipelineState>> {
+async function poGateNode(state: any): Promise<Partial<PipelineState>> {
   const gateInfo = await openHumanGatePR({
     stage: "po",
     title: `[GATE] PO Review — ${state.feature_title}`,
@@ -171,7 +173,7 @@ async function poGateNode(state: PipelineState): Promise<Partial<PipelineState>>
   return { github: { ...state.github, pr_url: gateInfo.pr_url } };
 }
 
-async function designGateNode(state: PipelineState): Promise<Partial<PipelineState>> {
+async function designGateNode(state: any): Promise<Partial<PipelineState>> {
   const gateInfo = await openHumanGatePR({
     stage: "design",
     title: `[GATE] Design Review — ${state.feature_title}`,
@@ -183,7 +185,7 @@ async function designGateNode(state: PipelineState): Promise<Partial<PipelineSta
   return { github: { ...state.github, pr_url: gateInfo.pr_url } };
 }
 
-async function qaGateNode(state: PipelineState): Promise<Partial<PipelineState>> {
+async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
   const gateInfo = await openHumanGatePR({
     stage: "qa",
     title: `[GATE] QA Video Review — ${state.feature_title}`,
@@ -195,7 +197,7 @@ async function qaGateNode(state: PipelineState): Promise<Partial<PipelineState>>
   return {};
 }
 
-async function escalateNode(state: PipelineState): Promise<Partial<PipelineState>> {
+async function escalateNode(state: any): Promise<Partial<PipelineState>> {
   const lastKickback = state.kickbacks[state.kickbacks.length - 1];
   return {
     escalated: true,
@@ -206,40 +208,50 @@ async function escalateNode(state: PipelineState): Promise<Partial<PipelineState
   };
 }
 
-async function doneNode(state: PipelineState): Promise<Partial<PipelineState>> {
+async function doneNode(state: any): Promise<Partial<PipelineState>> {
   logStage(state, "done", "completed", "Pipeline complete — all stages passed");
   return { current_stage: "done" };
 }
 
 // ── Graph assembly ────────────────────────────────────────────────────────────
 
+// LangGraph v0.2+ requires Annotation.Root to define state channels
+const PipelineAnnotation = Annotation.Root({
+  feature_id:          Annotation<string>({ default: () => "" }),
+  feature_title:       Annotation<string>({ default: () => "" }),
+  feature_description: Annotation<string>({ default: () => "" }),
+  repo_path:           Annotation<string>({ default: () => "" }),
+  requested_by:        Annotation<string>({ default: () => "" }),
+  created_at:          Annotation<string>({ default: () => new Date().toISOString() }),
+  current_stage:       Annotation<StageId>({ default: () => "pm_brainstorm" as StageId }),
+  next_stage:          Annotation<StageId | null>({ default: () => null }),
+  stage_history:       Annotation<StageId[]>({
+    reducer: (a: StageId[], b: StageId[]) => [...a, ...b],
+    default: () => [],
+  }),
+  kickbacks:           Annotation<KickbackRecord[]>({
+    reducer: (a: KickbackRecord[], b: KickbackRecord[]) => [...a, ...b],
+    default: () => [],
+  }),
+  retry_counts:        Annotation<Partial<Record<StageId, number>>>({ default: () => ({}) }),
+  max_retries:         Annotation<number>({ default: () => 3 }),
+  deliverables:        Annotation<Partial<Record<StageId, Deliverable>>>({ default: () => ({}) }),
+  human_approvals:     Annotation<PipelineState["human_approvals"]>({ default: () => ({}) }),
+  jira:                Annotation<PipelineState["jira"]>({ default: () => ({}) }),
+  github:              Annotation<PipelineState["github"]>({ default: () => ({}) }),
+  figma:               Annotation<PipelineState["figma"]>({ default: () => ({}) }),
+  slack:               Annotation<PipelineState["slack"]>({ default: () => ({}) }),
+  deployment:          Annotation<PipelineState["deployment"]>({ default: () => ({}) }),
+  stage_log:           Annotation<StageLogEntry[]>({
+    reducer: (a: StageLogEntry[], b: StageLogEntry[]) => [...a, ...b],
+    default: () => [],
+  }),
+  escalated:           Annotation<boolean>({ default: () => false }),
+  escalation_reason:   Annotation<string | undefined>({ default: () => undefined }),
+});
+
 export function buildGraph() {
-  const graph = new StateGraph<PipelineState>({
-    channels: {
-      feature_id:          { default: () => "" },
-      feature_title:       { default: () => "" },
-      feature_description: { default: () => "" },
-      repo_path:           { default: () => "" },
-      requested_by:        { default: () => "" },
-      created_at:          { default: () => new Date().toISOString() },
-      current_stage:       { default: () => "pm_brainstorm" as StageId },
-      next_stage:          { default: () => null },
-      stage_history:       { value: (a, b) => [...a, ...b], default: () => [] },
-      kickbacks:           { value: (a, b) => [...a, ...b], default: () => [] },
-      retry_counts:        { default: () => ({}) },
-      max_retries:         { default: () => 3 },
-      deliverables:        { default: () => ({}) },
-      human_approvals:     { default: () => ({}) },
-      jira:                { default: () => ({}) },
-      github:              { default: () => ({}) },
-      figma:               { default: () => ({}) },
-      slack:               { default: () => ({}) },
-      deployment:          { default: () => ({}) },
-      stage_log:           { value: (a, b) => [...a, ...b], default: () => [] },
-      escalated:           { default: () => false },
-      escalation_reason:   { default: () => undefined },
-    },
-  });
+  const graph = new StateGraph(PipelineAnnotation);
 
   // Add nodes
   graph.addNode("pm_brainstorm", wrapNode("pm_brainstorm", runPMBrainstormSwarm, { sod_role: "maker" }));
@@ -292,7 +304,7 @@ export function buildGraph() {
   graph.addEdge("dev_swarm", "nfr");
 
   // NFR result gates whether we go to review or kick back to dev
-  graph.addConditionalEdges("nfr", (s) => routeAfterDevSwarm(s), {
+  graph.addConditionalEdges("nfr", (s: any) => routeAfterDevSwarm(s as PipelineState), {
     nfr:       "nfr",
     dev_swarm: "dev_swarm",
     review:    "review",
