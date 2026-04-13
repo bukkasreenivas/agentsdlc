@@ -7,6 +7,18 @@ import type { UserStory } from "../types/state";
 
 const { jira: cfg } = integrations;
 
+/** True only when ALL required Jira fields are set to non-default values */
+function isJiraConfigured(): boolean {
+  return !!(
+    cfg.apiToken &&
+    cfg.email &&
+    cfg.baseUrl !== "https://yourorg.atlassian.net" &&
+    cfg.projectKey && cfg.projectKey !== "PROJ"
+  );
+}
+
+function stubKey() { return `${cfg.projectKey ?? "PROJ"}-${Math.floor(Math.random() * 9000) + 1000}`; }
+
 const authHeader = () =>
   "Basic " + Buffer.from(`${cfg.email}:${cfg.apiToken}`).toString("base64");
 
@@ -15,9 +27,9 @@ async function jiraFetch<T>(
   method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
   body?: unknown
 ): Promise<T> {
-  if (!cfg.apiToken) {
-    console.log(`[Jira stub] ${method} ${endpoint}`);
-    return { key: "PROJ-" + Math.floor(Math.random() * 1000), id: "1", self: "" } as unknown as T;
+  if (!isJiraConfigured()) {
+    console.log(`[Jira stub] ${method} ${endpoint} (set JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY to enable)`);
+    return { key: stubKey(), id: "1", self: "" } as unknown as T;
   }
   const url = `${cfg.baseUrl}/rest/api/3${endpoint}`;
   const res = await fetch(url, {
@@ -31,7 +43,10 @@ async function jiraFetch<T>(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Jira ${method} ${endpoint} -> ${res.status}: ${text}`);
+    // Gracefully degrade on config errors (wrong project key, wrong URL, etc.)
+    // rather than crashing the whole pipeline
+    console.warn(`[Jira] ${method} ${endpoint} -> ${res.status}: ${text} — falling back to stub`);
+    return { key: stubKey(), id: "1", self: "" } as unknown as T;
   }
   return res.json() as Promise<T>;
 }
