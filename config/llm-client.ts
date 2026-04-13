@@ -236,7 +236,6 @@ export async function withFailover<T>(fn: (c: Anthropic) => Promise<T>, label = 
         await _copilotReadyPromise;
         if (_copilotProxyFailed) continue;  // proxy failed during this await
       }
-      _client = null; _provider = null;
       return await fn(createClient(p));
     } catch (err) {
       const msg = (err as Error).message ?? String(err);

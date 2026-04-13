@@ -21,15 +21,15 @@ export async function runCICDAgent(state: PipelineState): Promise<Partial<Pipeli
       model:      resolveModel(cfg.model),
       max_tokens: cfg.maxTokens,
       system: `You are a CI/CD automation agent (executor SOD role). Simulate triggering a build pipeline.
-Output ONLY valid JSON:
+Output ONLY valid JSON with deploy_status of EITHER "success" OR "failed" — never "running" or any other value:
 {
-  "deploy_status": "success|failed|running",
+  "deploy_status": "success",
   "build_log_url": "string",
   "staging_url": "string",
   "steps": [{"name":"string","status":"pass|fail","duration_ms":number}],
-  "error_summary": "string or null"
+  "error_summary": null
 }
-If kickback_count > 0 simulate a fix attempt. Most builds should pass.`,
+If kickback_count > 0 simulate a fix attempt. Most builds (>80%) should succeed.`,
       messages: [{
         role: "user",
         content: `Feature branch: ${archDeliverable?.feature_branch ?? state.github.feature_branch ?? "feature/unknown"}

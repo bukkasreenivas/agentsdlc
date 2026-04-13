@@ -140,9 +140,10 @@ function routeAfterCICD(state: PipelineState): string {
   const retries = state.retry_counts?.cicd ?? 0;
   if (retries >= state.max_retries) return "escalate";
   const status = state.deployment?.deploy_status;
-  if (status === "failed") return "dev_swarm"; // Build red — kick back to dev
   if (status === "success") return "qa";
-  return "cicd";                               // Still running
+  if (status === "failed")  return "dev_swarm"; // Build red — kick back to dev
+  // Any other value (undefined, "running", etc.) is treated as failure to avoid infinite loop
+  return "escalate";
 }
 
 function routeAfterQA(state: PipelineState): string {
