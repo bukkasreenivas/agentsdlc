@@ -87,19 +87,15 @@ async function ensureCopilotProxy(): Promise<void> {
 
   console.log(`[LLM] Auto-starting copilot-api proxy on :${port} ...`);
 
-  // On Windows, .cmd files require cmd.exe /c — spawning them directly
-  // with shell:false causes EINVAL; shell:true triggers DEP0190.
+  // On Windows, .cmd/.bat files cannot be spawned directly — they require
+  // a shell. Use shell:true on Windows only. The DEP0190 warning is cosmetic.
   const isWin   = process.platform === "win32";
   const binPath = path.resolve(__dirname, "../node_modules/.bin/copilot-api");
-  const cmd     = isWin ? (process.env.ComSpec ?? "cmd.exe") : binPath;
-  const args    = isWin
-    ? ["/c", `"${binPath}.cmd"`, "start", "--port", String(port)]
-    : ["start", "--port", String(port)];
 
-  _copilotProc = spawn(cmd, args, {
+  _copilotProc = spawn(binPath, ["start", "--port", String(port)], {
     env:      { ...process.env },
     stdio:    ["ignore", "pipe", "pipe"],
-    shell:    false,
+    shell:    isWin,
     detached: false,
   });
 

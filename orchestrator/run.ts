@@ -42,24 +42,41 @@ async function runFeaturePipeline() {
   const stream = await (graph as any).stream(initial, { streamMode: "values" });
   for await (const state of stream) {
     const s = state as any;
-    const lastLog = s.stage_log?.[s.stage_log.length - 1];
+
+    // Print every new log entry emitted this step
+    const allLogs: any[] = s.stage_log ?? [];
+    const lastLog = allLogs[allLogs.length - 1];
     if (lastLog) {
-      const icon = lastLog.event === "completed" ? "✓" : lastLog.event === "kicked_back" ? "↩" : lastLog.event === "human_gate" ? "⏸" : "→";
-      console.log(`  ${icon} [${s.current_stage}] ${lastLog.detail}`);
+      const icon = lastLog.event === "completed"   ? "✓"
+                 : lastLog.event === "kicked_back"  ? "↩"
+                 : lastLog.event === "human_gate"   ? "⏸"
+                 : "→";
+      console.log(`  ${icon} [${lastLog.stage ?? s.current_stage}] ${lastLog.detail}`);
     }
-    const lastKB = s.kickbacks?.[s.kickbacks.length - 1];
-    if (lastKB && lastKB.stage === s.current_stage) {
-      console.log(`    ↩ Kickback #${lastKB.retry_count}: ${lastKB.detail}`);
-      console.log(`       Fix: ${lastKB.actionable}`);
+
+    // Kickback detail
+    const allKBs: any[] = s.kickbacks ?? [];
+    const lastKB = allKBs[allKBs.length - 1];
+    if (lastKB && lastLog?.event === "kicked_back") {
+      console.log(`       ↩ Kickback #${lastKB.retry_count}: ${lastKB.detail}`);
+      console.log(`         Fix: ${lastKB.actionable}`);
     }
+
+    // Human gate — print PR link
     if (s.github?.pr_url && lastLog?.event === "human_gate") {
       console.log(`\n  ⏸  HUMAN GATE — merge PR to continue: ${s.github.pr_url}\n`);
     }
+
+    // Terminal states
     if (s.current_stage === "done") {
       console.log(`\n  ✓ Pipeline complete!`);
       console.log(`    Epic:    ${s.jira?.epic_key ?? "N/A"}`);
       console.log(`    PR:      ${s.github?.pr_url ?? "N/A"}`);
       console.log(`    Staging: ${s.deployment?.staging_url ?? "N/A"}\n`);
+    }
+    if (s.current_stage === "escalated" || s.escalated) {
+      console.log(`\n  ✗ Pipeline escalated (max retries or unrecoverable error)`);
+      console.log(`    Reason: ${s.escalation_reason ?? "see memory/runtime/pipeline.log.md"}\n`);
     }
   }
 }

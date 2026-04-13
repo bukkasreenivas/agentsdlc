@@ -64,16 +64,20 @@ export function logStage(
   event: StageLogEntry["event"],
   detail: string,
   deliverableVersion?: number
-): void {
-  // LangGraph accumulates stage_log via the value channel reducer
+): StageLogEntry {
+  // LangGraph accumulates stage_log via the value channel reducer.
+  // IMPORTANT: callers must include the returned entry in their node's
+  // return value as { stage_log: [entry] } — direct mutation of state
+  // is invisible to LangGraph's immutable state tracking.
   const entry: StageLogEntry = {
     stage, event, detail, deliverable_version: deliverableVersion,
     timestamp: new Date().toISOString(),
   };
-  // Write to root memory too
+  // Mirror to disk for audit
   const logPath = path.join(PROJECT_ROOT, "memory/runtime/pipeline.log.md");
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   fs.appendFileSync(logPath, `\n[${entry.timestamp}] [${stage}] [${event}] ${detail}`);
+  return entry;
 }
 
 // ── validator.ts ──────────────────────────────────────────────────────────────

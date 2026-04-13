@@ -37,6 +37,8 @@ function wrapNode(
   options: { sod_role?: "maker" | "checker" | "executor" } = {}
 ): NodeFn {
   return async (state: any): Promise<Partial<PipelineState>> => {
+    const logEntries: StageLogEntry[] = [];
+
     // SOD check before execution
     if (options.sod_role) {
       const sodResult = sodCheck(stageId, options.sod_role, state);
@@ -45,7 +47,7 @@ function wrapNode(
       }
     }
 
-    logStage(state, stageId, "started", `${stageId} node executing`);
+    logEntries.push(logStage(state, stageId, "started", `${stageId} agent running`));
 
     const updates = await runFn(state);
 
@@ -57,10 +59,11 @@ function wrapNode(
       if (!validation.valid) {
         // Write failed deliverable to memory for audit
         await writeMemory(stageId, state.feature_id, deliverable, "failed");
+        logEntries.push(logStage(state, stageId, "kicked_back", validation.detail));
         return {
           ...updates,
+          stage_log: logEntries,
           kickbacks: [
-            ...(state.kickbacks ?? []),
             {
               stage: stageId,
               reason: validation.kickback_reason!,
@@ -78,10 +81,12 @@ function wrapNode(
       }
       // Write validated deliverable to memory
       await writeMemory(stageId, state.feature_id, deliverable, "success");
-      logStage(state, stageId, "completed", `Deliverable v${deliverable.version} written`);
+      logEntries.push(logStage(state, stageId, "completed", `Deliverable v${deliverable.version} validated`));
+    } else {
+      logEntries.push(logStage(state, stageId, "completed", `${stageId} completed (no deliverable)`));
     }
 
-    return updates;
+    return { ...updates, stage_log: logEntries };
   };
 }
 
