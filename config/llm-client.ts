@@ -1,12 +1,15 @@
 // config/llm-client.ts
 // Priority 1: Bedrock (bearer token OR access keys OR SSO)
-// Priority 2: GitHub Copilot (copilot-api proxy)
+// Priority 2: GitHub Copilot (copilot-api proxy — auto-started as background process)
 // Priority 3: Anthropic direct key
 // Set LLM_PROVIDER=bedrock|copilot|anthropic to force. Leave unset for auto+failover.
 
-import Anthropic from "@anthropic-ai/sdk";
-import * as dotenv from "dotenv";
-import * as path   from "path";
+import Anthropic                   from "@anthropic-ai/sdk";
+import { AnthropicBedrock }        from "@anthropic-ai/bedrock-sdk";
+import * as net                    from "net";
+import * as path                   from "path";
+import * as dotenv                 from "dotenv";
+import { spawn, ChildProcess }     from "child_process";
 
 // Load .agentsdlc/.env — NOT the host project .env
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -26,6 +29,8 @@ const COPILOT_MODEL_MAP: Record<string, string> = {
   "claude-haiku-4-5":          "claude-haiku-4-5",
   "claude-haiku-4-5-20251001": "claude-haiku-4-5",
 };
+
+// ── Credential detection ──────────────────────────────────────────────────────
 
 function hasBedrockCredentials(): boolean {
   return !!(
@@ -55,6 +60,73 @@ function detectProvider(): Provider {
   return "anthropic";
 }
 
+// ── Copilot proxy auto-start ──────────────────────────────────────────────────
+
+let _copilotProc: ChildProcess | null = null;
+let _copilotReadyPromise: Promise<void> | null = null;
+
+function isPortOpen(port: number, host = "127.0.0.1"): Promise<boolean> {
+  return new Promise(resolve => {
+    const s = net.createConnection({ port, host });
+    s.once("connect", () => { s.destroy(); resolve(true);  });
+    s.once("error",   () => { s.destroy(); resolve(false); });
+  });
+}
+
+async function ensureCopilotProxy(): Promise<void> {
+  const proxyUrl = process.env.COPILOT_PROXY_URL ?? "http://localhost:4141";
+  const port     = parseInt(new URL(proxyUrl).port || "4141", 10);
+
+  if (await isPortOpen(port)) {
+    console.log(`[LLM] Copilot proxy already running on :${port}`);
+    return;
+  }
+
+  const binPath = path.resolve(__dirname, "../node_modules/.bin/copilot-api");
+  console.log(`[LLM] Auto-starting copilot-api proxy on :${port} ...`);
+
+  _copilotProc = spawn(binPath, ["start", "--port", String(port)], {
+    env:      { ...process.env },
+    stdio:    ["ignore", "pipe", "pipe"],
+    shell:    process.platform === "win32",
+    detached: false,
+  });
+
+  _copilotProc.stdout?.on("data", (d: Buffer) => {
+    if (process.env.LLM_DEBUG) process.stdout.write(`[copilot-proxy] ${d}`);
+  });
+  _copilotProc.stderr?.on("data", (d: Buffer) => {
+    if (process.env.LLM_DEBUG) process.stderr.write(`[copilot-proxy] ${d}`);
+  });
+  _copilotProc.on("error", (err) => {
+    console.warn(`[LLM] copilot-api process error: ${err.message}`);
+  });
+
+  const kill = () => { try { _copilotProc?.kill(); } catch {} _copilotProc = null; };
+  process.once("exit",    kill);
+  process.once("SIGINT",  () => { kill(); process.exit(0); });
+  process.once("SIGTERM", () => { kill(); process.exit(0); });
+
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 500));
+    if (await isPortOpen(port)) {
+      console.log(`[LLM] Copilot proxy ready on :${port}`);
+      return;
+    }
+  }
+  throw new Error(`[LLM] copilot-api proxy did not start within 15s on :${port}`);
+}
+
+if (hasCopilotProxy()) {
+  _copilotReadyPromise = ensureCopilotProxy().catch(err => {
+    console.warn(`[LLM] Copilot proxy pre-init failed: ${(err as Error).message}`);
+    throw err;
+  });
+}
+
+// ── Client factory ────────────────────────────────────────────────────────────
+
 let _client:   Anthropic | null = null;
 let _provider: Provider  | null = null;
 
@@ -69,45 +141,44 @@ export function createClient(force?: Provider): Anthropic {
 
   switch (provider) {
     case "bedrock": {
+      const opts: ConstructorParameters<typeof AnthropicBedrock>[0] = { awsRegion: region };
+
       if (bearer) {
-        // Bearer token path — proxy via standard Anthropic client with Bedrock endpoint
-        client = new Anthropic({
-          apiKey:  bearer,
-          baseURL: `https://bedrock-runtime.${region}.amazonaws.com`,
-          defaultHeaders: {
-            "Authorization": `Bearer ${bearer}`,
-            "Content-Type":  "application/json",
-          },
-        });
+        opts.awsBearerToken = bearer;
         console.log(`[LLM] Bedrock — bearer token (region: ${region})`);
+      } else if (process.env.AWS_ACCESS_KEY_ID) {
+        opts.awsAccessKey    = process.env.AWS_ACCESS_KEY_ID;
+        opts.awsSecretKey    = process.env.AWS_SECRET_ACCESS_KEY;
+        opts.awsSessionToken = process.env.AWS_SESSION_TOKEN;
+        console.log(`[LLM] Bedrock — SigV4 access keys (region: ${region})`);
+      } else if (process.env.AWS_PROFILE) {
+        opts.awsProfile = process.env.AWS_PROFILE;
+        console.log(`[LLM] Bedrock — SigV4 profile "${process.env.AWS_PROFILE}" (region: ${region})`);
       } else {
-        // SigV4 path — access keys or SSO
-        const opts: any = { awsRegion: region };
-        if (process.env.AWS_ACCESS_KEY_ID) {
-          opts.awsAccessKey    = process.env.AWS_ACCESS_KEY_ID;
-          opts.awsSecretKey    = process.env.AWS_SECRET_ACCESS_KEY;
-          opts.awsSessionToken = process.env.AWS_SESSION_TOKEN;
-        }
-        client = new (Anthropic as any).AnthropicBedrock(opts);
-        console.log(`[LLM] Bedrock — SigV4 (region: ${region})`);
+        console.log(`[LLM] Bedrock — SigV4 default credential chain (region: ${region})`);
       }
+
+      client = new AnthropicBedrock(opts) as unknown as Anthropic;
       break;
     }
+
     case "copilot": {
       const proxyUrl = process.env.COPILOT_PROXY_URL ?? "http://localhost:4141";
       client = new Anthropic({ baseURL: proxyUrl, apiKey: process.env.GITHUB_TOKEN ?? "dummy" });
       console.log(`[LLM] Copilot proxy (${proxyUrl})`);
       break;
     }
+
     default: {
       if (!process.env.ANTHROPIC_API_KEY) throw new Error(
         "[LLM] No credentials found.\n" +
         "  Priority 1 — Bedrock: set AWS_BEARER_TOKEN_BEDROCK or AWS_ACCESS_KEY_ID in .agentsdlc/.env\n" +
-        "  Priority 2 — Copilot: set GITHUB_TOKEN and run copilot-api proxy\n" +
+        "  Priority 2 — Copilot: set GITHUB_TOKEN (proxy auto-starts, no manual step needed)\n" +
         "  Priority 3 — Anthropic: set ANTHROPIC_API_KEY"
       );
       client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       console.log("[LLM] Anthropic direct");
+      break;
     }
   }
 
@@ -116,6 +187,8 @@ export function createClient(force?: Provider): Anthropic {
   return client;
 }
 
+// ── Model resolution ──────────────────────────────────────────────────────────
+
 export function resolveModel(model: string): string {
   const p = _provider ?? detectProvider();
   if (p === "bedrock") return BEDROCK_MODEL_MAP[model] ?? model;
@@ -123,8 +196,16 @@ export function resolveModel(model: string): string {
   return model;
 }
 
+// ── Failover orchestration ────────────────────────────────────────────────────
+
 export async function withFailover<T>(fn: (c: Anthropic) => Promise<T>, label = "call"): Promise<T> {
-  if (process.env.LLM_PROVIDER) return fn(createClient());
+  if (process.env.LLM_PROVIDER) {
+    if (process.env.LLM_PROVIDER === "copilot" && _copilotReadyPromise) {
+      await _copilotReadyPromise;
+    }
+    return fn(createClient());
+  }
+
   const order: Provider[] = ["bedrock", "copilot", "anthropic"];
   const errors: string[]  = [];
 
@@ -133,16 +214,21 @@ export async function withFailover<T>(fn: (c: Anthropic) => Promise<T>, label = 
     if (p === "copilot"   && !hasCopilotProxy())       continue;
     if (p === "anthropic" && !hasAnthropicKey())        continue;
     try {
+      if (p === "copilot" && _copilotReadyPromise) {
+        await _copilotReadyPromise;
+      }
       _client = null; _provider = null;
       return await fn(createClient(p));
     } catch (err) {
       const msg = (err as Error).message ?? String(err);
-      console.warn(`[LLM] ${p} failed (${label}): ${msg.slice(0, 100)}`);
-      errors.push(`${p}: ${msg.slice(0, 80)}`);
+      console.warn(`[LLM] ${p} failed (${label}): ${msg.slice(0, 120)}`);
+      errors.push(`${p}: ${msg.slice(0, 100)}`);
     }
   }
   throw new Error(`[LLM] All providers failed for "${label}":\n${errors.map(e => "  " + e).join("\n")}`);
 }
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
 export function providerSummary(): string {
   const p = _provider ?? detectProvider();

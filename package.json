@@ -15,9 +15,11 @@
     "typecheck":        "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.30.0",
+    "@anthropic-ai/sdk": "^0.88.0",
+    "@anthropic-ai/bedrock-sdk": "^0.28.1",
     "@langchain/langgraph": "^0.2.0",
     "@langchain/core": "^0.3.0",
+    "copilot-api": "^0.7.0",
     "dotenv": "^16.0.0",
     "playwright": "^1.45.0"
   },
