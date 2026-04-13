@@ -95,10 +95,17 @@ function wrapNode(
 function routeAfterPMBrainstorm(state: PipelineState): string {
   const d = state.deliverables?.pm_brainstorm?.content as any;
   if (!d) return "escalate";
-  const retries = state.retry_counts?.pm_brainstorm ?? 0;
-  if (retries >= state.max_retries) return "escalate";
   if (d.consensus?.build_decision === "reject") return "escalate";   // PM says don't build
-  if (d.consensus?.build_decision === "modify")  return "pm_brainstorm"; // Loop PM swarm
+  if (d.consensus?.build_decision === "modify") {
+    // Count how many times pm_brainstorm has already completed via stage_log.
+    // wrapNode doesn't increment retry_counts for routing loops, so we use
+    // stage_log as the authoritative run counter.
+    const pmRuns = (state.stage_log ?? []).filter(
+      (e: StageLogEntry) => e.stage === "pm_brainstorm" && e.event === "completed"
+    ).length;
+    if (pmRuns >= state.max_retries) return "escalate";
+    return "pm_brainstorm";  // Loop for genuine scope clarification
+  }
   return "po";
 }
 

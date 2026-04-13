@@ -66,6 +66,10 @@ async function runSynthesizer(feature: string, rounds: BrainstormRound[], codeCo
       model:      resolveModel(cfg.model),
       max_tokens: cfg.maxTokens,
       system: `You are a senior PM synthesizer. Read all 5 PM perspectives and produce consensus.
+build_decision rules:
+- "proceed" — feature is valid and ready to build (use this for most well-defined features)
+- "reject"  — feature conflicts with strategy or is clearly wrong (rare)
+- "modify"  — ONLY if critical scope ambiguity exists AND this is the first iteration (avoid loops)
 Output ONLY valid JSON: {"consensus":{"build_decision":"proceed|modify|reject","confidence":0.0-1.0,"agreed_scope":"string","open_risks":["..."],"north_star_impact":"string","ost_opportunity":"string"},"pm_memo":"full markdown PM memo"}`,
       messages: [{ role: "user", content: `Feature: ${feature}\n\nPM Brainstorm Rounds:\n${roundsSummary}\n\nCodebase:\n${codeContext.slice(0, 1000)}\n\nSynthesize and decide. Output ONLY valid JSON.` }],
     });
