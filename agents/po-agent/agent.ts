@@ -5,13 +5,13 @@ import { createEpic, createUserStory } from "../../integrations/jira";
 import { notifyPOForStoryReview }      from "../../integrations/slack";
 import { integrations }                from "../../config/integrations";
 import { makeDeliverable, writeAgentMemory } from "../../orchestrator/index";
-import type { PipelineState, PODeliverable, UserStory } from "../../types/state";
+import type { PipelineState, PODeliverable, UserStory, KickbackRecord } from "../../types/state";
 
 export async function runPOAgent(state: PipelineState): Promise<Partial<PipelineState>> {
   const pmDeliverable  = state.deliverables?.pm_brainstorm?.content as any;
   const pmMemo: string = pmDeliverable?.pm_memo ?? "";
   const kickbackCount  = state.retry_counts?.po ?? 0;
-  const lastKickback   = state.kickbacks.findLast(k => k.stage === "po");
+  const lastKickback   = state.kickbacks.findLast((k: KickbackRecord) => k.stage === "po");
   const kickbackContext = lastKickback
     ? `\n\nIMPORTANT — Revision ${kickbackCount}. Previous rejected.\nReason: ${lastKickback.detail}\nFix: ${lastKickback.actionable}`
     : "";
