@@ -64,6 +64,7 @@ function detectProvider(): Provider {
 
 let _copilotProc: ChildProcess | null = null;
 let _copilotReadyPromise: Promise<void> | null = null;
+let _copilotProxyFailed  = false;   // set true if proxy couldn't start
 
 function isPortOpen(port: number, host = "127.0.0.1"): Promise<boolean> {
   return new Promise(resolve => {
@@ -82,13 +83,16 @@ async function ensureCopilotProxy(): Promise<void> {
     return;
   }
 
-  const binPath = path.resolve(__dirname, "../node_modules/.bin/copilot-api");
+  // On Windows use the .cmd wrapper directly (avoids shell:true deprecation warning)
+  const isWin   = process.platform === "win32";
+  const binName = isWin ? "copilot-api.cmd" : "copilot-api";
+  const binPath = path.resolve(__dirname, `../node_modules/.bin/${binName}`);
   console.log(`[LLM] Auto-starting copilot-api proxy on :${port} ...`);
 
   _copilotProc = spawn(binPath, ["start", "--port", String(port)], {
     env:      { ...process.env },
     stdio:    ["ignore", "pipe", "pipe"],
-    shell:    process.platform === "win32",
+    shell:    false,   // never use shell — avoids DEP0190 on Windows
     detached: false,
   });
 
@@ -120,8 +124,10 @@ async function ensureCopilotProxy(): Promise<void> {
 
 if (hasCopilotProxy()) {
   _copilotReadyPromise = ensureCopilotProxy().catch(err => {
-    console.warn(`[LLM] Copilot proxy pre-init failed: ${(err as Error).message}`);
-    throw err;
+    // Do NOT re-throw — a failed proxy must not crash the process.
+    // Set the flag so failover skips copilot gracefully.
+    _copilotProxyFailed = true;
+    console.warn(`[LLM] Copilot proxy unavailable (will skip in failover): ${(err as Error).message}`);
   });
 }
 
@@ -213,6 +219,7 @@ export async function withFailover<T>(fn: (c: Anthropic) => Promise<T>, label = 
   for (const p of order) {
     if (p === "bedrock"   && !hasBedrockCredentials()) continue;
     if (p === "copilot"   && !hasCopilotProxy())       continue;
+    if (p === "copilot"   && _copilotProxyFailed)      continue;  // proxy didn't start
     if (p === "anthropic" && !hasAnthropicKey())        continue;
     try {
       if (p === "copilot" && _copilotReadyPromise) {
