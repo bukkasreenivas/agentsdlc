@@ -90,7 +90,9 @@ async function runFeaturePipeline() {
 
   // thread_id ties this run to the MemorySaver checkpoint.
   // On --resume, the same thread_id lets LangGraph restore the last saved state.
-  const streamConfig = { streamMode: "values", configurable: { thread_id: featureId } };
+  // recursionLimit: 25 is LangGraph default — too low for a 12-stage pipeline with gates.
+  // Full happy path: ~16 nodes. With kickbacks/retries allow up to 100.
+  const streamConfig = { streamMode: "values", configurable: { thread_id: featureId }, recursionLimit: 100 };
   const stream = await (graph as any).stream(resuming ? null : initial, streamConfig);
 
   let lastPrintedLogCount = 0;

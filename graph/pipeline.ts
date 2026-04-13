@@ -168,16 +168,15 @@ function routeAfterQA(state: PipelineState): string {
 
 // ── Human gate nodes (open a GitHub PR branch, wait for approval) ─────────────
 
-async function poGateNode(state: any): Promise<Partial<PipelineState>> {
-  // Auto-approve when GitHub is not configured (dev / demo mode) to avoid infinite loop
-  const githubConfigured = !!(
-    integrations.github?.token &&
-    integrations.github?.owner &&
-    integrations.github?.repo
-  );
+// Returns true when all three GitHub fields are set (token, owner, repo).
+// When false, gates auto-approve so the pipeline can run end-to-end in dev mode.
+function isGithubConfigured(): boolean {
+  return !!(integrations.github?.token && integrations.github?.owner && integrations.github?.repo);
+}
 
-  if (!githubConfigured) {
-    console.log("  [po_gate] GitHub not configured — auto-approving PO gate (dev mode)");
+async function poGateNode(state: any): Promise<Partial<PipelineState>> {
+  if (!isGithubConfigured()) {
+    console.log("  [po_gate] GitHub not configured — auto-approving (dev mode)");
     logStage(state, "po", "human_gate", "Auto-approved (GitHub not configured — dev mode)");
     return {
       human_approvals: {
@@ -186,40 +185,59 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
       },
     };
   }
-
   const gateInfo = await openHumanGatePR({
     stage: "po",
     title: `[GATE] PO Review — ${state.feature_title}`,
-    body: `Please review the Epic and User Stories in Jira.\n\nEpic: ${state.jira?.epic_key ?? "N/A"}\nApprove by merging this PR.`,
+    body:  `Review Epic + User Stories in Jira.\nEpic: ${state.jira?.epic_key ?? "N/A"}\nMerge this PR to approve.`,
     deliverable: state.deliverables?.po,
-    featureId: state.feature_id,
+    featureId:   state.feature_id,
   });
   logStage(state, "po", "human_gate", `Gate PR opened: ${gateInfo.pr_url}`);
   return { github: { ...state.github, pr_url: gateInfo.pr_url } };
 }
 
 async function designGateNode(state: any): Promise<Partial<PipelineState>> {
+  if (!isGithubConfigured()) {
+    console.log("  [design_gate] GitHub not configured — auto-approving (dev mode)");
+    logStage(state, "design", "human_gate", "Auto-approved (GitHub not configured — dev mode)");
+    return {
+      human_approvals: {
+        ...state.human_approvals,
+        design: { approved: true, comment: "Auto-approved: GitHub integration not configured" },
+      },
+    };
+  }
   const gateInfo = await openHumanGatePR({
     stage: "design",
     title: `[GATE] Design Review — ${state.feature_title}`,
-    body: `Please review the Figma wireframes.\n\nFigma: ${state.figma.file_key}\nApprove by merging this PR.`,
+    body:  `Review Figma wireframes.\nFigma: ${state.figma?.file_key ?? "N/A"}\nMerge this PR to approve.`,
     deliverable: state.deliverables?.design,
-    featureId: state.feature_id,
+    featureId:   state.feature_id,
   });
   logStage(state, "design", "human_gate", `Gate PR opened: ${gateInfo.pr_url}`);
   return { github: { ...state.github, pr_url: gateInfo.pr_url } };
 }
 
 async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
+  if (!isGithubConfigured()) {
+    console.log("  [qa_gate] GitHub not configured — auto-approving (dev mode)");
+    logStage(state, "qa", "human_gate", "Auto-approved (GitHub not configured — dev mode)");
+    return {
+      human_approvals: {
+        ...state.human_approvals,
+        qa: { approved: true, comment: "Auto-approved: GitHub integration not configured" },
+      },
+    };
+  }
   const gateInfo = await openHumanGatePR({
     stage: "qa",
     title: `[GATE] QA Video Review — ${state.feature_title}`,
-    body: `QA run complete. Please watch the videos and approve.\n\nVideos: ${state.deliverables?.qa?.memory_path}`,
+    body:  `QA complete. Watch videos and approve.\nVideos: ${state.deliverables?.qa?.memory_path ?? "N/A"}\nMerge to approve.`,
     deliverable: state.deliverables?.qa,
-    featureId: state.feature_id,
+    featureId:   state.feature_id,
   });
   logStage(state, "qa", "human_gate", `Gate PR opened: ${gateInfo.pr_url}`);
-  return {};
+  return { github: { ...state.github, pr_url: gateInfo.pr_url } };
 }
 
 async function escalateNode(state: any): Promise<Partial<PipelineState>> {
@@ -321,23 +339,32 @@ export function buildGraph() {
     escalate:      "escalate",
   });
 
-  // PO → human gate → back to PO (if rejected) or design (if approved)
+  // PO → human gate → design (if approved) or END (waiting for human to merge PR)
+  // The gate node itself sets human_approvals.po when auto-approving.
+  // If rejected by human (approval.approved=false), routeAfterPO sends back to po for revision.
   graph.addConditionalEdges("po", routeAfterPO, {
     po:       "po",
     po_gate:  "po_gate",
     design:   "design",
     escalate: "escalate",
   });
-  graph.addEdge("po_gate", "po");  // Gate re-enters PO to check approval state
+  // Gate routes FORWARD to design (not back to po) — prevents re-running the PO agent
+  graph.addConditionalEdges("po_gate", (s: any) =>
+    s.human_approvals?.po?.approved ? "design" : "__end__",
+    { design: "design", __end__: END }
+  );
 
-  // Design → human gate → back to design (if rejected) or architect (if approved)
+  // Design → human gate → architect (if approved) or END (waiting for human)
   graph.addConditionalEdges("design", routeAfterDesign, {
-    design:       "design",
-    design_gate:  "design_gate",
-    architect:    "architect",
-    escalate:     "escalate",
+    design:      "design",
+    design_gate: "design_gate",
+    architect:   "architect",
+    escalate:    "escalate",
   });
-  graph.addEdge("design_gate", "design");
+  graph.addConditionalEdges("design_gate", (s: any) =>
+    s.human_approvals?.design?.approved ? "architect" : "__end__",
+    { architect: "architect", __end__: END }
+  );
 
   // Architect → dev swarm
   graph.addEdge("architect", "dev_swarm");
@@ -368,7 +395,7 @@ export function buildGraph() {
     escalate:  "escalate",
   });
 
-  // QA → video gate → done or kickback
+  // QA → video gate → done (if approved) or END (waiting for human)
   graph.addConditionalEdges("qa", routeAfterQA, {
     qa:        "qa",
     qa_gate:   "qa_gate",
@@ -376,7 +403,10 @@ export function buildGraph() {
     done:      "done",
     escalate:  "escalate",
   });
-  graph.addEdge("qa_gate", "qa");
+  graph.addConditionalEdges("qa_gate", (s: any) =>
+    s.human_approvals?.qa?.approved ? "done" : "__end__",
+    { done: "done", __end__: END }
+  );
 
   // Terminals
   graph.addEdge("escalate", END);

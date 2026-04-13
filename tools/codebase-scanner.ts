@@ -260,6 +260,31 @@ function walkDir(dir: string, callback: (filePath: string) => void, maxDepth: nu
   } catch {}
 }
 
+// ── Project overview reader ───────────────────────────────────────────────────
+// project-overview.md is generated once on install (scripts/init-project.ts)
+// and acts as the canonical "what this product is" for all agents.
+// Using this file avoids re-scanning the codebase on every pipeline run.
+
+function readProjectOverview(): string | null {
+  // Check memory/project-overview.md relative to THIS file's location (.agentsdlc/tools/)
+  const candidates = [
+    path.resolve(__dirname, "../memory/project-overview.md"),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      try {
+        const content = fs.readFileSync(p, "utf8")
+          .replace(/^<!--.*?-->\s*/s, "")   // strip auto-generated comment header
+          .trim();
+        if (content.length > 50) {          // ignore empty/stub files
+          return content.slice(0, 4000);
+        }
+      } catch {}
+    }
+  }
+  return null;
+}
+
 // ── Key file reader ───────────────────────────────────────────────────────────
 // Reads actual file contents so agents understand the REAL product, not just
 // its file tree. This is the primary defence against hallucination.
@@ -338,6 +363,12 @@ function readKeyFiles(
 }
 
 function buildProjectIdentity(excerpts: KeyFileExcerpt[], techStack: string[]): string {
+  // Prefer the pre-generated overview if it exists — it's richer and saves scanning time
+  const overview = readProjectOverview();
+  if (overview) {
+    return `[From memory/project-overview.md]\n${overview}`;
+  }
+
   const parts: string[] = [`Tech stack: ${techStack.join(", ")}.`];
   for (const e of excerpts.slice(0, 4)) {
     // Take only first 300 chars per file to keep identity concise
