@@ -67,7 +67,7 @@ export function logStage(
 ): void {
   // LangGraph accumulates stage_log via the value channel reducer
   const entry: StageLogEntry = {
-    stage, event, detail, deliverableVersion,
+    stage, event, detail, deliverable_version: deliverableVersion,
     timestamp: new Date().toISOString(),
   };
   // Write to root memory too
