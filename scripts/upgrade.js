@@ -244,8 +244,9 @@ async function upgrade() {
 
   } catch (err) {
     console.error("\n Upgrade failed:", err.message);
+    console.error(" Stack trace:\n", err.stack);
     console.error(" Your .agentsdlc/ is unchanged.\n");
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
     process.exit(1);
   }
 }
