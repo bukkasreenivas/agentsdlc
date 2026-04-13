@@ -2,7 +2,7 @@
 // .agentsdlc/orchestrator/run.ts
 // Run from INSIDE .agentsdlc/:  npx ts-node orchestrator/run.ts --feature "..."
 // Or via npm script:             npm run pipeline:feature "..."
-// Resume after crash:            npm run pipeline:feature --resume <feature_id>
+// Resume after PO/Design/QA:    npm run pipeline:feature --resume
 
 import * as dotenv from "dotenv";
 import * as path   from "path";
@@ -13,34 +13,66 @@ import { randomUUID }      from "crypto";
 import { providerSummary, getHostProjectPath } from "../config/llm-client";
 import { ensureProjectOverview }               from "../scripts/init-project";
 
-const args  = process.argv.slice(2);
-const get   = (flag: string) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : undefined; };
-const has   = (flag: string) => args.includes(flag);
-const mode  = args[0];
+const args = process.argv.slice(2);
+const get  = (flag: string) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : undefined; };
+const has  = (flag: string) => args.includes(flag);
+const mode = args[0];
 
-// Host project path — agents scan this to understand existing code
 const hostPath = get("--repo") ?? getHostProjectPath();
 
-// ── Checkpoint helpers ────────────────────────────────────────────────────────
+// ── Persistent state helpers ──────────────────────────────────────────────────
+// State is saved to disk after every node so --resume works across process
+// restarts. MemorySaver is in-memory only and dies when the process exits.
 
 const CHECKPOINT_DIR = path.resolve(__dirname, "../memory/checkpoints");
 
-function saveCheckpoint(featureId: string, featureTitle: string): void {
-  fs.mkdirSync(CHECKPOINT_DIR, { recursive: true });
-  const file = path.join(CHECKPOINT_DIR, `${featureId}.json`);
-  fs.writeFileSync(file, JSON.stringify({ featureId, featureTitle, startedAt: new Date().toISOString() }, null, 2));
+interface CheckpointMeta {
+  featureId:   string;
+  featureTitle: string;
+  startedAt:   string;
+  stage?:      string;   // last completed stage
 }
 
-function loadLatestCheckpoint(): { featureId: string; featureTitle: string } | null {
+function stateFile(featureId: string)    { return path.join(CHECKPOINT_DIR, `${featureId}.state.json`); }
+function metaFile(featureId: string)     { return path.join(CHECKPOINT_DIR, `${featureId}.meta.json`); }
+
+function saveState(featureId: string, state: any): void {
+  fs.mkdirSync(CHECKPOINT_DIR, { recursive: true });
+  fs.writeFileSync(stateFile(featureId), JSON.stringify(state, null, 2));
+}
+
+function loadState(featureId: string): any | null {
+  const f = stateFile(featureId);
+  if (!fs.existsSync(f)) return null;
+  try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; }
+}
+
+function saveMeta(meta: CheckpointMeta): void {
+  fs.mkdirSync(CHECKPOINT_DIR, { recursive: true });
+  fs.writeFileSync(metaFile(meta.featureId), JSON.stringify(meta, null, 2));
+}
+
+function loadLatestMeta(): CheckpointMeta | null {
   if (!fs.existsSync(CHECKPOINT_DIR)) return null;
   const files = fs.readdirSync(CHECKPOINT_DIR)
-    .filter(f => f.endsWith(".json"))
+    .filter(f => f.endsWith(".meta.json"))
     .map(f => ({ f, mtime: fs.statSync(path.join(CHECKPOINT_DIR, f)).mtimeMs }))
     .sort((a, b) => b.mtime - a.mtime);
   if (!files.length) return null;
-  try {
-    return JSON.parse(fs.readFileSync(path.join(CHECKPOINT_DIR, files[0].f), "utf8"));
-  } catch { return null; }
+  try { return JSON.parse(fs.readFileSync(path.join(CHECKPOINT_DIR, files[0].f), "utf8")); }
+  catch { return null; }
+}
+
+function listCheckpoints(): CheckpointMeta[] {
+  if (!fs.existsSync(CHECKPOINT_DIR)) return [];
+  return fs.readdirSync(CHECKPOINT_DIR)
+    .filter(f => f.endsWith(".meta.json"))
+    .map(f => {
+      try { return JSON.parse(fs.readFileSync(path.join(CHECKPOINT_DIR, f), "utf8")); }
+      catch { return null; }
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
 }
 
 // ── Feature pipeline ──────────────────────────────────────────────────────────
@@ -50,17 +82,25 @@ async function runFeaturePipeline() {
   const maxRetry = parseInt(get("--max-retries") ?? "3", 10);
   const resume   = has("--resume");
 
-  // Resolve feature_id: resume from checkpoint or start fresh
-  let featureId = randomUUID();
-  let resuming  = false;
+  let featureId  = randomUUID();
+  let savedState: any = null;
 
   if (resume) {
-    const checkpoint = loadLatestCheckpoint();
-    if (checkpoint) {
-      featureId = checkpoint.featureId as `${string}-${string}-${string}-${string}-${string}`;
-      resuming  = true;
-      console.log(`\n ↩ Resuming feature_id: ${featureId}`);
-      console.log(`   Title: ${checkpoint.featureTitle}\n`);
+    const meta = loadLatestMeta();
+    if (meta) {
+      featureId  = meta.featureId as `${string}-${string}-${string}-${string}-${string}`;
+      savedState = loadState(featureId);
+      const completedStages = savedState
+        ? Object.keys(savedState.deliverables ?? {})
+            .filter((k: string) => savedState.deliverables[k]?.validated)
+        : [];
+
+      console.log(`\n ↩  Resuming pipeline`);
+      console.log(`    Feature:   ${meta.featureTitle}`);
+      console.log(`    ID:        ${featureId}`);
+      console.log(`    Completed: ${completedStages.join(", ") || "none"}`);
+      if (meta.stage) console.log(`    Last stage: ${meta.stage}`);
+      console.log();
     } else {
       console.log("\n  No checkpoint found — starting fresh.\n");
     }
@@ -71,25 +111,24 @@ async function runFeaturePipeline() {
   console.log(`\n Feature:      ${feature}`);
   console.log(` Host project: ${hostPath}`);
   console.log(` Max retries:  ${maxRetry}`);
-  if (resuming) console.log(` Resuming:     ${featureId}`);
   console.log();
 
-  // Auto-generate memory/project-overview.md if missing or stale (>7 days).
-  // Agents read this file to understand the real product — prevents hallucination.
   try {
     await ensureProjectOverview(hostPath);
   } catch (err) {
     console.warn(`  [project:init] Skipped (${(err as Error).message}) — agents will scan codebase directly`);
   }
 
-  // Save checkpoint so --resume can find this run's thread_id later
-  saveCheckpoint(featureId, feature);
+  // Save meta so --resume can find this run
+  saveMeta({ featureId, featureTitle: feature, startedAt: new Date().toISOString() });
 
-  // Lazy import so dotenv loads first
   const { buildGraph } = await import("../graph/pipeline");
   const graph = buildGraph();
 
-  const initial = {
+  // If resuming with saved state: pass it as initial so wrapNode can skip
+  // already-completed stages via the deliverable guard in pipeline.ts.
+  // Fresh start: pass blank initial state.
+  const initial = savedState ?? {
     feature_id: featureId, feature_title: feature, feature_description: feature,
     repo_path: hostPath, requested_by: "cli", created_at: new Date().toISOString(),
     current_stage: "pm_brainstorm" as const, stage_history: [], kickbacks: [],
@@ -97,32 +136,37 @@ async function runFeaturePipeline() {
     jira: {}, github: {}, figma: {}, slack: {}, deployment: {}, stage_log: [], escalated: false,
   };
 
-  // thread_id ties this run to the MemorySaver checkpoint.
-  // On --resume, the same thread_id lets LangGraph restore the last saved state.
-  // recursionLimit: 25 is LangGraph default — too low for a 12-stage pipeline with gates.
-  // Full happy path: ~16 nodes. With kickbacks/retries allow up to 100.
-  const streamConfig = { streamMode: "values", configurable: { thread_id: featureId }, recursionLimit: 100 };
-  const stream = await (graph as any).stream(resuming ? null : initial, streamConfig);
+  const streamConfig = {
+    streamMode:    "values",
+    configurable:  { thread_id: featureId },
+    recursionLimit: 100,
+  };
 
+  const stream = await (graph as any).stream(initial, streamConfig);
   let lastPrintedLogCount = 0;
 
   for await (const state of stream) {
     const s = state as any;
 
-    // Only print NEW log entries added since last tick (stage_log accumulates)
+    // Save full state to disk after every node — enables --resume across restarts
+    if (s.current_stage) {
+      saveState(featureId, s);
+      saveMeta({ featureId, featureTitle: feature, startedAt: initial.created_at, stage: s.current_stage });
+    }
+
+    // Print only NEW log entries (stage_log accumulates across nodes)
     const allLogs: any[] = s.stage_log ?? [];
     const newLogs = allLogs.slice(lastPrintedLogCount);
     lastPrintedLogCount = allLogs.length;
 
     for (const log of newLogs) {
-      const icon = log.event === "completed"   ? "✓"
-                 : log.event === "kicked_back"  ? "↩"
-                 : log.event === "human_gate"   ? "⏸"
+      const icon = log.event === "completed"  ? "✓"
+                 : log.event === "kicked_back" ? "↩"
+                 : log.event === "human_gate"  ? "⏸"
                  : "→";
       console.log(`  ${icon} [${log.stage ?? s.current_stage}] ${log.detail}`);
     }
 
-    // Kickback detail (only for the latest kickback, once)
     const allKBs: any[] = s.kickbacks ?? [];
     const lastKB  = allKBs[allKBs.length - 1];
     const lastLog = newLogs[newLogs.length - 1];
@@ -131,20 +175,19 @@ async function runFeaturePipeline() {
       console.log(`         Fix: ${lastKB.actionable}`);
     }
 
-    // Human gate — print PR link
     if (s.github?.pr_url && lastLog?.event === "human_gate") {
       console.log(`\n  ⏸  HUMAN GATE — merge PR to continue: ${s.github.pr_url}\n`);
     }
 
-    // Terminal states
     if (s.current_stage === "done") {
       console.log(`\n  ✓ Pipeline complete!`);
       console.log(`    Epic:    ${s.jira?.epic_key ?? "N/A"}`);
       console.log(`    PR:      ${s.github?.pr_url ?? "N/A"}`);
       console.log(`    Staging: ${s.deployment?.staging_url ?? "N/A"}\n`);
     }
+
     if (s.current_stage === "escalated" || s.escalated) {
-      console.log(`\n  ✗ Pipeline escalated (max retries or unrecoverable error)`);
+      console.log(`\n  ✗ Pipeline escalated`);
       console.log(`    Reason: ${s.escalation_reason ?? "see memory/runtime/pipeline.log.md"}`);
       console.log(`    Resume: npm run pipeline:feature --resume\n`);
     }

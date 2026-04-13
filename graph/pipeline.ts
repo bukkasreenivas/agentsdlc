@@ -41,6 +41,16 @@ function wrapNode(
   return async (state: any): Promise<Partial<PipelineState>> => {
     const logEntries: StageLogEntry[] = [];
 
+    // ── Resume guard ─────────────────────────────────────────────────────────
+    // If this stage already has a validated deliverable (loaded from disk on
+    // --resume), skip the LLM call entirely and continue from where we left off.
+    const existing = state.deliverables?.[stageId];
+    if (existing?.validated) {
+      logEntries.push(logStage(state, stageId, "completed",
+        `Skipped — already completed (v${existing.version}, resuming from checkpoint)`));
+      return { stage_log: logEntries };
+    }
+
     // SOD check before execution
     if (options.sod_role) {
       const sodResult = sodCheck(stageId, options.sod_role, state);
@@ -199,6 +209,12 @@ function askTerminalApproval(prompt: string): Promise<{ approved: boolean; comme
 }
 
 async function poGateNode(state: any): Promise<Partial<PipelineState>> {
+  // Already approved (loaded from saved state on --resume) — skip prompt
+  if (state.human_approvals?.po?.approved === true) {
+    console.log("  [po_gate] Already approved — skipping gate (resuming from checkpoint)");
+    return {};
+  }
+
   const poContent = state.deliverables?.po?.content as any;
   const epicKey   = state.jira?.epic_key  as string | undefined;
   const storyKeys = (state.jira?.story_keys ?? []) as string[];
@@ -259,6 +275,11 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
 }
 
 async function designGateNode(state: any): Promise<Partial<PipelineState>> {
+  if (state.human_approvals?.design?.approved === true) {
+    console.log("  [design_gate] Already approved — skipping gate (resuming from checkpoint)");
+    return {};
+  }
+
   const designContent = state.deliverables?.design?.content as any;
   const retries = state.retry_counts?.design ?? 0;
 
@@ -305,6 +326,11 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
 }
 
 async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
+  if (state.human_approvals?.qa?.approved === true) {
+    console.log("  [qa_gate] Already approved — skipping gate (resuming from checkpoint)");
+    return {};
+  }
+
   const qaContent = state.deliverables?.qa?.content as any;
   const retries   = state.retry_counts?.qa ?? 0;
 
