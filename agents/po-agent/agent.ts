@@ -116,10 +116,15 @@ Output ONLY valid JSON.`,
     kickback_count: kickbackCount,
   });
 
+  // Clear the PO approval so the gate re-prompts the human with the revised stories.
+  // (If we kept approved:false, the gate would immediately send back here — infinite loop.)
+  const { po: _clearPoApproval, ...restApprovals } = (state.human_approvals ?? {}) as any;
+
   return {
-    current_stage: "po",
-    deliverables:  { po: makeDeliverable("po", version, "PODeliverable", content, memoryPath) },
-    jira:          { ...state.jira, epic_key: epic.key, story_keys: stories.map(s => s.key) },
-    slack:         { ...state.slack, po_thread: slackThread?.ts },
+    current_stage:   "po",
+    deliverables:    { po: makeDeliverable("po", version, "PODeliverable", content, memoryPath) },
+    jira:            { ...state.jira, epic_key: epic.key, story_keys: stories.map(s => s.key) },
+    slack:           { ...state.slack, po_thread: slackThread?.ts },
+    human_approvals: restApprovals,   // po approval cleared — gate will re-prompt
   };
 }
