@@ -116,7 +116,7 @@ export async function createEpic(
       summary,
       description: adfDoc(description),
       issuetype:   { name: "Epic" },
-      customfield_10011: summary,   // Epic Name -- adjust ID for your instance
+      // customfield_10011 (Epic Name) omitted — not on default screen; summary is sufficient
     },
   });
   return { key: result.key, userStories: [] };
@@ -135,12 +135,12 @@ export async function createUserStory(input: CreateStoryInput): Promise<UserStor
   ]);
   const result = await jiraFetch<JiraIssueRef>("/issue", "POST", {
     fields: {
-      project:           { key: cfg.projectKey },
-      summary:           input.summary,
+      project:     { key: cfg.projectKey },
+      summary:     input.summary,
       description,
-      issuetype:         { name: "Story" },
-      story_points:      input.story_points,
-      customfield_10014: input.epicKey,   // Epic Link -- adjust ID
+      issuetype:   { name: "Story" },
+      parent:      { key: input.epicKey },  // Modern Jira Cloud epic link (replaces customfield_10014)
+      // story_points and customfield_10014 omitted — custom field IDs vary per instance and cause 400s
     },
   });
   return {

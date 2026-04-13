@@ -26,6 +26,7 @@ import { writeMemory, logStage }   from "../orchestrator/memory";
 import { validateDeliverable }     from "../orchestrator/validator";
 import { openHumanGatePR }         from "../orchestrator/human-gate";
 import { sodCheck }                from "../orchestrator/sod";
+import { integrations }            from "../config/integrations";
 
 // ── Node wrappers ─────────────────────────────────────────────────────────────
 
@@ -168,10 +169,28 @@ function routeAfterQA(state: PipelineState): string {
 // ── Human gate nodes (open a GitHub PR branch, wait for approval) ─────────────
 
 async function poGateNode(state: any): Promise<Partial<PipelineState>> {
+  // Auto-approve when GitHub is not configured (dev / demo mode) to avoid infinite loop
+  const githubConfigured = !!(
+    integrations.github?.token &&
+    integrations.github?.owner &&
+    integrations.github?.repo
+  );
+
+  if (!githubConfigured) {
+    console.log("  [po_gate] GitHub not configured — auto-approving PO gate (dev mode)");
+    logStage(state, "po", "human_gate", "Auto-approved (GitHub not configured — dev mode)");
+    return {
+      human_approvals: {
+        ...state.human_approvals,
+        po: { approved: true, comment: "Auto-approved: GitHub integration not configured" },
+      },
+    };
+  }
+
   const gateInfo = await openHumanGatePR({
     stage: "po",
     title: `[GATE] PO Review — ${state.feature_title}`,
-    body: `Please review the Epic and User Stories in Jira.\n\nEpic: ${state.jira.epic_key}\nApprove by merging this PR.`,
+    body: `Please review the Epic and User Stories in Jira.\n\nEpic: ${state.jira?.epic_key ?? "N/A"}\nApprove by merging this PR.`,
     deliverable: state.deliverables?.po,
     featureId: state.feature_id,
   });
