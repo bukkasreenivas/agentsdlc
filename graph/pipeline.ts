@@ -215,43 +215,48 @@ async function doneNode(state: any): Promise<Partial<PipelineState>> {
 
 // ── Graph assembly ────────────────────────────────────────────────────────────
 
-// LangGraph v0.2+ requires Annotation.Root to define state channels
+// LangGraph v0.2+ — every Annotation field requires a `value` binary operator.
+// Simple fields use last-write-wins: (_, b) => b
+// Accumulator fields merge arrays.
 const PipelineAnnotation = Annotation.Root({
-  feature_id:          Annotation<string>({ default: () => "" }),
-  feature_title:       Annotation<string>({ default: () => "" }),
-  feature_description: Annotation<string>({ default: () => "" }),
-  repo_path:           Annotation<string>({ default: () => "" }),
-  requested_by:        Annotation<string>({ default: () => "" }),
-  created_at:          Annotation<string>({ default: () => new Date().toISOString() }),
-  current_stage:       Annotation<StageId>({ default: () => "pm_brainstorm" as StageId }),
-  next_stage:          Annotation<StageId | null>({ default: () => null }),
+  feature_id:          Annotation<string>({ value: (_, b) => b, default: () => "" }),
+  feature_title:       Annotation<string>({ value: (_, b) => b, default: () => "" }),
+  feature_description: Annotation<string>({ value: (_, b) => b, default: () => "" }),
+  repo_path:           Annotation<string>({ value: (_, b) => b, default: () => "" }),
+  requested_by:        Annotation<string>({ value: (_, b) => b, default: () => "" }),
+  created_at:          Annotation<string>({ value: (_, b) => b, default: () => new Date().toISOString() }),
+  current_stage:       Annotation<StageId>({ value: (_, b) => b, default: () => "pm_brainstorm" as StageId }),
+  next_stage:          Annotation<StageId | null>({ value: (_, b) => b, default: () => null }),
   stage_history:       Annotation<StageId[]>({
-    reducer: (a: StageId[], b: StageId[]) => [...a, ...b],
+    value: (a: StageId[], b: StageId[]) => [...a, ...b],
     default: () => [],
   }),
   kickbacks:           Annotation<KickbackRecord[]>({
-    reducer: (a: KickbackRecord[], b: KickbackRecord[]) => [...a, ...b],
+    value: (a: KickbackRecord[], b: KickbackRecord[]) => [...a, ...b],
     default: () => [],
   }),
-  retry_counts:        Annotation<Partial<Record<StageId, number>>>({ default: () => ({}) }),
-  max_retries:         Annotation<number>({ default: () => 3 }),
-  deliverables:        Annotation<Partial<Record<StageId, Deliverable>>>({ default: () => ({}) }),
-  human_approvals:     Annotation<PipelineState["human_approvals"]>({ default: () => ({}) }),
-  jira:                Annotation<PipelineState["jira"]>({ default: () => ({}) }),
-  github:              Annotation<PipelineState["github"]>({ default: () => ({}) }),
-  figma:               Annotation<PipelineState["figma"]>({ default: () => ({}) }),
-  slack:               Annotation<PipelineState["slack"]>({ default: () => ({}) }),
-  deployment:          Annotation<PipelineState["deployment"]>({ default: () => ({}) }),
+  retry_counts:        Annotation<Partial<Record<StageId, number>>>({ value: (_, b) => b, default: () => ({}) }),
+  max_retries:         Annotation<number>({ value: (_, b) => b, default: () => 3 }),
+  deliverables:        Annotation<Partial<Record<StageId, Deliverable>>>({ value: (_, b) => b, default: () => ({}) }),
+  human_approvals:     Annotation<PipelineState["human_approvals"]>({ value: (_, b) => b, default: () => ({}) }),
+  jira:                Annotation<PipelineState["jira"]>({ value: (_, b) => b, default: () => ({}) }),
+  github:              Annotation<PipelineState["github"]>({ value: (_, b) => b, default: () => ({}) }),
+  figma:               Annotation<PipelineState["figma"]>({ value: (_, b) => b, default: () => ({}) }),
+  slack:               Annotation<PipelineState["slack"]>({ value: (_, b) => b, default: () => ({}) }),
+  deployment:          Annotation<PipelineState["deployment"]>({ value: (_, b) => b, default: () => ({}) }),
   stage_log:           Annotation<StageLogEntry[]>({
-    reducer: (a: StageLogEntry[], b: StageLogEntry[]) => [...a, ...b],
+    value: (a: StageLogEntry[], b: StageLogEntry[]) => [...a, ...b],
     default: () => [],
   }),
-  escalated:           Annotation<boolean>({ default: () => false }),
-  escalation_reason:   Annotation<string | undefined>({ default: () => undefined }),
+  escalated:           Annotation<boolean>({ value: (_, b) => b, default: () => false }),
+  escalation_reason:   Annotation<string | undefined>({ value: (_, b) => b, default: () => undefined }),
 });
 
 export function buildGraph() {
-  const graph = new StateGraph(PipelineAnnotation);
+  // Cast to any: addNode() returns a new typed graph but we use a mutable ref,
+  // so TypeScript loses track of registered node names. The logic is correct.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const graph = new StateGraph(PipelineAnnotation) as any;
 
   // Add nodes
   graph.addNode("pm_brainstorm", wrapNode("pm_brainstorm", runPMBrainstormSwarm, { sod_role: "maker" }));
