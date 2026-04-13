@@ -223,7 +223,7 @@ async function upgrade() {
 
     // 6. Cleanup
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.rmSync(extractTmp, { recursive: true, force: true }).catch?.(() => {});
+    try { fs.rmSync(extractTmp, { recursive: true, force: true }); } catch (_) {}
 
     // 7. npm install in .agentsdlc
     console.log("\n Running npm install...");
