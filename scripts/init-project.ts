@@ -1,62 +1,48 @@
 #!/usr/bin/env node
 // scripts/init-project.ts
 //
-// Run automatically after install/upgrade:   (postinstall in package.json)
-// Run manually to force a refresh:           npm run project:init
+// Exports ensureProjectOverview(hostPath) — called automatically at the start
+// of every pipeline run in orchestrator/run.ts. No manual step needed.
 //
-// Scans the host project codebase and writes memory/project-overview.md —
-// a stable, human-editable description of the product that ALL agents read
-// before generating features, stories, code, or tests.
-//
-// If the host project is empty (no manifest, no entry points), the LLM
-// generates a new-project template for you to fill in.
+// Can also be run directly to force a refresh:
+//   npm run project:init          (uses cached file if < 7 days old)
+//   npm run project:reinit        (force regenerate regardless of age)
 
-import * as dotenv from "dotenv";
-import * as path   from "path";
-import * as fs     from "fs";
-
-// Load .agentsdlc/.env before importing any module that needs credentials
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
-
-import { scanCodebase }                        from "../tools/codebase-scanner";
-import { withFailover, resolveModel, providerSummary } from "../config/llm-client";
-import { AGENT_MODELS }                        from "../config/agents";
-
-// ── Paths ─────────────────────────────────────────────────────────────────────
-
-// HOST_PROJECT_PATH env var (relative to .agentsdlc/) or default to parent dir
-const hostPath = process.env.HOST_PROJECT_PATH
-  ? path.resolve(__dirname, "..", process.env.HOST_PROJECT_PATH)
-  : path.resolve(__dirname, "../..");
+import * as path from "path";
+import * as fs   from "fs";
 
 const OVERVIEW_PATH = path.resolve(__dirname, "../memory/project-overview.md");
-const FORCE         = process.argv.includes("--force");
-const MAX_AGE_DAYS  = 7;   // Regenerate if overview is older than this
+const MAX_AGE_DAYS  = 7;
 
 // ── Staleness check ───────────────────────────────────────────────────────────
 
 function isOverviewFresh(): boolean {
-  if (FORCE) return false;
   if (!fs.existsSync(OVERVIEW_PATH)) return false;
   const age = (Date.now() - fs.statSync(OVERVIEW_PATH).mtimeMs) / (1000 * 60 * 60 * 24);
   return age < MAX_AGE_DAYS;
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Core: generate and write project-overview.md ──────────────────────────────
 
-async function main() {
-  console.log("\n AgentSDLC — Project Overview Init\n");
+export async function ensureProjectOverview(
+  hostPath: string,
+  opts: { force?: boolean; silent?: boolean } = {}
+): Promise<void> {
+  const { force = false, silent = false } = opts;
+  const log = (msg: string) => { if (!silent) console.log(msg); };
 
-  if (isOverviewFresh()) {
+  if (!force && isOverviewFresh()) {
     const age = (Date.now() - fs.statSync(OVERVIEW_PATH).mtimeMs) / (1000 * 60 * 60);
-    console.log(` ✓ memory/project-overview.md is fresh (${Math.round(age)}h old)`);
-    console.log(`   Run with --force to regenerate: npm run project:init -- --force\n`);
+    log(`  [project:init] Using cached memory/project-overview.md (${Math.round(age)}h old)`);
     return;
   }
 
-  console.log(` Host project: ${hostPath}`);
-  console.log(providerSummary());
-  console.log("\n Scanning codebase...");
+  log(`  [project:init] Scanning project and generating overview...`);
+
+  // Lazy imports so dotenv has already loaded before these modules are required
+  const { scanCodebase }           = await import("../tools/codebase-scanner");
+  const { withFailover, resolveModel } = await import("../config/llm-client");
+  const { AGENT_MODELS }           = await import("../config/agents");
 
   const codeCtx = await scanCodebase(hostPath);
 
@@ -65,20 +51,12 @@ async function main() {
     codeCtx.entryPoints.length === 0 &&
     codeCtx.keyFileExcerpts.length === 0;
 
-  console.log(` Tech stack:   ${isEmpty ? "none detected (new project)" : codeCtx.techStack.join(", ")}`);
-  if (!isEmpty) {
-    console.log(` Entry points: ${codeCtx.entryPoints.join(", ") || "none"}`);
-    console.log(` API routes:   ${codeCtx.apiRoutes.length} found`);
-    console.log(` Key files:    ${codeCtx.keyFileExcerpts.map(f => f.path).join(", ") || "none"}`);
-  }
-
   const cfg = AGENT_MODELS.pm_brainstorm;
-  console.log("\n Generating project overview with LLM...");
 
   const systemPrompt = isEmpty
-    ? `You are a product strategist helping a team set up a new software project.
-Generate a project-overview.md that documents the product vision the team will build.
-Use this structure:
+    ? `You are a product strategist helping a team define a new software product.
+Generate a project-overview.md that captures the product vision for an AI pipeline to build against.
+Structure:
 # Project Overview
 ## Product Name & Purpose
 ## Target Users
@@ -86,45 +64,42 @@ Use this structure:
 ## Tech Stack (recommended)
 ## Key Principles
 ## What NOT to build (anti-scope)
+Output the markdown directly — no preamble.`
+    : `You are a senior product analyst. Read the codebase context and write project-overview.md.
+This file is read by AI agents (PM, PO, Architect, Dev, QA) before every pipeline run.
+It must tell them EXACTLY what product this is so they never hallucinate the wrong product.
 
-Be specific enough that an AI agent reading this will know exactly what kind of product to build features for.
-Do NOT add commentary — output the markdown document directly.`
-    : `You are a senior product analyst. Read the codebase context below and write a concise project-overview.md.
-This file will be read by AI agents (PM, PO, Architect, Developer, QA) before every pipeline run.
-It must tell them EXACTLY what product this is so they cannot hallucinate a wrong product.
-
-Use this structure:
+Structure:
 # Project Overview
-## Product Name & Purpose (1-2 sentences — what does this product DO for its users?)
-## Target Users (who uses it?)
-## Core Domain Entities (list the main data models, e.g. "References, Requests, Accounts")
+## Product Name & Purpose (1-2 sentences — what does this product DO for users?)
+## Target Users
+## Core Domain Entities (list main data models: e.g. References, Requests, Accounts)
 ## Existing Features (bullet list of what is ALREADY built — agents must NOT rebuild these)
-## Tech Stack (be specific: framework versions, DB, auth method, deployment)
-## Key API Endpoints (list the most important routes)
-## What NOT to build (anti-scope — prevents agents generating wrong features)
+## Tech Stack (specific: framework, DB, auth, deployment)
+## Key API Endpoints (most important routes)
+## What NOT to build (anti-scope — prevents generating wrong features)
 
 Be specific — name real files, real routes, real data models from the codebase.
-Do NOT add commentary or preamble — output the markdown document directly.`;
+Output the markdown directly — no preamble or commentary.`;
 
   const userMessage = isEmpty
-    ? `Empty project detected at: ${hostPath}\n\nGenerate a project-overview.md template for a new product.
-The team will edit this file to define their product vision.`
-    : `Host project at: ${hostPath}
+    ? `Empty project at: ${hostPath}\nGenerate a project-overview.md template for a new product.`
+    : `Project at: ${hostPath}
 
 Tech stack: ${codeCtx.techStack.join(", ")}
 Entry points: ${codeCtx.entryPoints.join(", ")}
 API routes (${codeCtx.apiRoutes.length}): ${codeCtx.apiRoutes.join(", ")}
-DB schema files: ${codeCtx.dbSchema.join(", ")}
+DB schema: ${codeCtx.dbSchema.join(", ")}
 
 Key file contents:
-${codeCtx.keyFileExcerpts.map(f => `### ${f.path} (${f.reason})\n${f.content}`).join("\n\n")}
+${codeCtx.keyFileExcerpts.map(f => `### ${f.path}\n${f.content}`).join("\n\n")}
 
-File tree (first 2000 chars):
+File tree:
 ${codeCtx.fileTree.slice(0, 2000)}
 
-Write a detailed project-overview.md so agents know exactly what product this is.`;
+Write project-overview.md so agents know exactly what product this is.`;
 
-  const overviewContent = await withFailover(async (client) => {
+  const content = await withFailover(async (client) => {
     const res = await client.messages.create({
       model:      resolveModel(cfg.model),
       max_tokens: 2048,
@@ -134,8 +109,8 @@ Write a detailed project-overview.md so agents know exactly what product this is
     return res.content[0].type === "text" ? res.content[0].text : "";
   }, "init-project");
 
-  if (!overviewContent.trim()) {
-    console.warn(" ⚠ LLM returned empty response — overview not written");
+  if (!content.trim()) {
+    log(`  [project:init] ⚠ LLM returned empty — skipping overview write`);
     return;
   }
 
@@ -143,21 +118,45 @@ Write a detailed project-overview.md so agents know exactly what product this is
 
   const header = [
     `<!-- Auto-generated by AgentSDLC on ${new Date().toISOString()} -->`,
-    `<!-- Edit freely — agents will use this file as their product context -->`,
-    `<!-- Delete this file and run "npm run project:init" to regenerate -->`,
+    `<!-- Edit freely — agents use this as their product context on every run -->`,
+    `<!-- Regenerates automatically every ${MAX_AGE_DAYS} days, or: npm run project:reinit -->`,
     "",
   ].join("\n");
 
-  fs.writeFileSync(OVERVIEW_PATH, header + overviewContent, "utf8");
-
-  console.log(` ✓ Project overview written: memory/project-overview.md`);
-  console.log(`\n IMPORTANT: Review and edit the overview to correct any inaccuracies.`);
-  console.log(`   Agents will use this file as their product context on every pipeline run.\n`);
+  fs.writeFileSync(OVERVIEW_PATH, header + content, "utf8");
+  log(`  [project:init] ✓ memory/project-overview.md written`);
+  if (!silent) {
+    console.log(`  [project:init]   Review and edit it to correct any inaccuracies.`);
+  }
 }
 
-main().catch(err => {
-  // Non-fatal — don't break npm install if LLM is unavailable
-  console.warn(`\n [project:init] Skipped: ${err.message}`);
-  console.warn(`   Run manually once credentials are set: npm run project:init\n`);
-  process.exit(0);
-});
+// ── CLI entry point (npm run project:init) ────────────────────────────────────
+
+async function cli() {
+  // dotenv must be loaded before ensureProjectOverview imports llm-client
+  const dotenv = await import("dotenv");
+  dotenv.config({ path: path.resolve(__dirname, "../.env") });
+
+  const { getHostProjectPath } = await import("../config/llm-client");
+  const hostPath = process.env.HOST_PROJECT_PATH
+    ? path.resolve(__dirname, "..", process.env.HOST_PROJECT_PATH)
+    : getHostProjectPath();
+
+  const force = process.argv.includes("--force");
+
+  console.log("\n AgentSDLC — Project Overview\n");
+  console.log(` Host project: ${hostPath}`);
+
+  try {
+    await ensureProjectOverview(hostPath, { force, silent: false });
+  } catch (err) {
+    console.warn(`\n [project:init] Failed: ${(err as Error).message}`);
+    console.warn(`   Check credentials in .agentsdlc/.env\n`);
+    process.exit(0); // non-fatal
+  }
+}
+
+// Run CLI only when invoked directly (not when imported as a module)
+if (require.main === module) {
+  cli();
+}

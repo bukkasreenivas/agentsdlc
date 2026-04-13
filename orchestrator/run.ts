@@ -11,6 +11,7 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 import { randomUUID }      from "crypto";
 import { providerSummary, getHostProjectPath } from "../config/llm-client";
+import { ensureProjectOverview }               from "../scripts/init-project";
 
 const args  = process.argv.slice(2);
 const get   = (flag: string) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : undefined; };
@@ -72,6 +73,14 @@ async function runFeaturePipeline() {
   console.log(` Max retries:  ${maxRetry}`);
   if (resuming) console.log(` Resuming:     ${featureId}`);
   console.log();
+
+  // Auto-generate memory/project-overview.md if missing or stale (>7 days).
+  // Agents read this file to understand the real product — prevents hallucination.
+  try {
+    await ensureProjectOverview(hostPath);
+  } catch (err) {
+    console.warn(`  [project:init] Skipped (${(err as Error).message}) — agents will scan codebase directly`);
+  }
 
   // Save checkpoint so --resume can find this run's thread_id later
   saveCheckpoint(featureId, feature);
