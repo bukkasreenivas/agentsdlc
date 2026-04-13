@@ -133,7 +133,7 @@ export async function createUserStory(input: CreateStoryInput): Promise<UserStor
     summary:            input.summary,
     acceptance_criteria: input.acceptance_criteria,
     story_points:       input.story_points,
-    epicKey:            input.epicKey,
+    epic_key:           input.epicKey,
     job_story:          input.job_story,
     wwa:                input.wwa,
     test_scenarios:     input.test_scenarios,

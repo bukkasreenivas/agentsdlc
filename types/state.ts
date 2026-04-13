@@ -91,6 +91,7 @@ export interface UserStory {
   summary: string;
   acceptance_criteria: string[];
   story_points: number;
+  epic_key?: string;        // Jira epic link
   job_story: string;        // "When X, I want Y, so I can Z" (pm-skills job-stories)
   wwa: string;              // Why-What-Acceptance format
   test_scenarios: string[];
