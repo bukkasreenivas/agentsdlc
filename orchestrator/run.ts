@@ -39,7 +39,7 @@ async function runFeaturePipeline() {
     jira: {}, github: {}, figma: {}, slack: {}, deployment: {}, stage_log: [], escalated: false,
   };
 
-  const stream = (graph as any).stream(initial, { streamMode: "values" });
+  const stream = await (graph as any).stream(initial, { streamMode: "values" });
   for await (const state of stream) {
     const s = state as any;
     const lastLog = s.stage_log?.[s.stage_log.length - 1];
