@@ -5,7 +5,7 @@ export const AGENT_MODELS: Record<string, AgentConfig> = {
   pm_brainstorm:  { model: "claude-opus-4-20250514",   maxTokens: 4096, temperature: 0.4 },
   pm_critic:      { model: "claude-sonnet-4-20250514", maxTokens: 2048, temperature: 0.3 },
   pm_synthesizer: { model: "claude-opus-4-20250514",   maxTokens: 4096, temperature: 0.2 },
-  po:             { model: "claude-sonnet-4-20250514", maxTokens: 4096, temperature: 0.2 },
+  po:             { model: "claude-sonnet-4-20250514", maxTokens: 8192, temperature: 0.2 },
   design:         { model: "claude-sonnet-4-20250514", maxTokens: 3000, temperature: 0.4 },
   architect:      { model: "claude-opus-4-20250514",   maxTokens: 8192, temperature: 0.1 },
   frontend_dev:   { model: "claude-sonnet-4-20250514", maxTokens: 4096, temperature: 0.2 },

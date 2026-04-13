@@ -11,7 +11,7 @@
 //   - Kickback edges are first-class graph edges, not exception handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { StateGraph, Annotation, END, START } from "@langchain/langgraph";
+import { StateGraph, Annotation, MemorySaver, END, START } from "@langchain/langgraph";
 import type { PipelineState, StageId, KickbackRecord, StageLogEntry, Deliverable } from "../types/state";
 import { runPMBrainstormSwarm }    from "../agents/pm-brainstorm/swarm";
 import { runPOAgent }              from "../agents/po-agent/agent";
@@ -363,5 +363,7 @@ export function buildGraph() {
   graph.addEdge("escalate", END);
   graph.addEdge("done",     END);
 
-  return graph.compile();
+  // MemorySaver persists state between nodes within the same process.
+  // Pass thread_id in stream config to resume a run after a crash.
+  return graph.compile({ checkpointer: new MemorySaver() });
 }

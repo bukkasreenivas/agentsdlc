@@ -17,19 +17,33 @@ export async function runPOAgent(state: PipelineState): Promise<Partial<Pipeline
     : "";
 
   const cfg = AGENT_MODELS.po;
-  const raw = await withFailover(async (client) => {
-    const response = await client.messages.create({
-      model:      resolveModel(cfg.model),
-      max_tokens: cfg.maxTokens,
-      system: `You are a Product Owner AI agent applying pm-skills frameworks.
-For each story apply: User Story + Job Story (When/Want/So) + WWA (Why-What-Acceptance) + Test Scenarios.
-Output ONLY valid JSON: {"epic_summary":"string","epic_description":"string","stories":[{"summary":"string","job_story":"string","wwa":"string","acceptance_criteria":["string"],"test_scenarios":{"happy_path":["string"],"edge_cases":["string"],"error_states":["string"]},"story_points":number}]}`,
-      messages: [{ role: "user", content: `PM Memo:\n${pmMemo}${kickbackContext}\n\nGenerate Epic and Stories. Output ONLY valid JSON.` }],
-    });
-    return response.content[0].type === "text" ? response.content[0].text : "{}";
-  }, "po-agent");
 
-  const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+  async function callPOAgent(limit: string): Promise<string> {
+    return withFailover(async (client) => {
+      const response = await client.messages.create({
+        model:      resolveModel(cfg.model),
+        max_tokens: cfg.maxTokens,
+        system: `You are a Product Owner AI agent applying pm-skills frameworks.
+For each story apply: User Story + Job Story (When/Want/So) + WWA (Why-What-Acceptance) + Test Scenarios.
+IMPORTANT: Generate a MAXIMUM of ${limit} user stories. Keep each story concise (2-3 acceptance criteria, 1-2 test scenarios each). Prioritise the most critical stories.
+Output ONLY valid JSON — no markdown, no comments, no trailing commas:
+{"epic_summary":"string","epic_description":"string","stories":[{"summary":"string","job_story":"string","wwa":"string","acceptance_criteria":["string"],"test_scenarios":{"happy_path":["string"],"edge_cases":["string"],"error_states":["string"]},"story_points":number}]}`,
+        messages: [{ role: "user", content: `PM Memo:\n${pmMemo.slice(0, 3000)}${kickbackContext}\n\nGenerate Epic and max ${limit} Stories. Output ONLY valid JSON.` }],
+      });
+      return response.content[0].type === "text" ? response.content[0].text : "{}";
+    }, "po-agent");
+  }
+
+  let raw = await callPOAgent("5");
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+  } catch {
+    // Response may have been truncated — retry asking for fewer stories
+    console.warn("[PO] JSON parse failed (likely truncated), retrying with 3 stories...");
+    raw = await callPOAgent("3");
+    parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+  }
   const epic   = await createEpic(parsed.epic_summary, parsed.epic_description);
   const stories: UserStory[] = [];
 

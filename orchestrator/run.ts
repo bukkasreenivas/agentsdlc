@@ -2,9 +2,11 @@
 // .agentsdlc/orchestrator/run.ts
 // Run from INSIDE .agentsdlc/:  npx ts-node orchestrator/run.ts --feature "..."
 // Or via npm script:             npm run pipeline:feature "..."
+// Resume after crash:            npm run pipeline:feature --resume <feature_id>
 
 import * as dotenv from "dotenv";
 import * as path   from "path";
+import * as fs     from "fs";
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 import { randomUUID }      from "crypto";
@@ -12,51 +14,107 @@ import { providerSummary, getHostProjectPath } from "../config/llm-client";
 
 const args  = process.argv.slice(2);
 const get   = (flag: string) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : undefined; };
+const has   = (flag: string) => args.includes(flag);
 const mode  = args[0];
 
 // Host project path — agents scan this to understand existing code
 const hostPath = get("--repo") ?? getHostProjectPath();
 
+// ── Checkpoint helpers ────────────────────────────────────────────────────────
+
+const CHECKPOINT_DIR = path.resolve(__dirname, "../memory/checkpoints");
+
+function saveCheckpoint(featureId: string, featureTitle: string): void {
+  fs.mkdirSync(CHECKPOINT_DIR, { recursive: true });
+  const file = path.join(CHECKPOINT_DIR, `${featureId}.json`);
+  fs.writeFileSync(file, JSON.stringify({ featureId, featureTitle, startedAt: new Date().toISOString() }, null, 2));
+}
+
+function loadLatestCheckpoint(): { featureId: string; featureTitle: string } | null {
+  if (!fs.existsSync(CHECKPOINT_DIR)) return null;
+  const files = fs.readdirSync(CHECKPOINT_DIR)
+    .filter(f => f.endsWith(".json"))
+    .map(f => ({ f, mtime: fs.statSync(path.join(CHECKPOINT_DIR, f)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+  if (!files.length) return null;
+  try {
+    return JSON.parse(fs.readFileSync(path.join(CHECKPOINT_DIR, files[0].f), "utf8"));
+  } catch { return null; }
+}
+
+// ── Feature pipeline ──────────────────────────────────────────────────────────
+
 async function runFeaturePipeline() {
   const feature  = get("--feature") ?? "New feature";
   const maxRetry = parseInt(get("--max-retries") ?? "3", 10);
+  const resume   = has("--resume");
+
+  // Resolve feature_id: resume from checkpoint or start fresh
+  let featureId = randomUUID();
+  let resuming  = false;
+
+  if (resume) {
+    const checkpoint = loadLatestCheckpoint();
+    if (checkpoint) {
+      featureId = checkpoint.featureId as `${string}-${string}-${string}-${string}-${string}`;
+      resuming  = true;
+      console.log(`\n ↩ Resuming feature_id: ${featureId}`);
+      console.log(`   Title: ${checkpoint.featureTitle}\n`);
+    } else {
+      console.log("\n  No checkpoint found — starting fresh.\n");
+    }
+  }
 
   console.log("\n AgentSDLC v2  |  Self-contained in .agentsdlc/\n");
   console.log(providerSummary());
   console.log(`\n Feature:      ${feature}`);
   console.log(` Host project: ${hostPath}`);
-  console.log(` Max retries:  ${maxRetry}\n`);
+  console.log(` Max retries:  ${maxRetry}`);
+  if (resuming) console.log(` Resuming:     ${featureId}`);
+  console.log();
+
+  // Save checkpoint so --resume can find this run's thread_id later
+  saveCheckpoint(featureId, feature);
 
   // Lazy import so dotenv loads first
   const { buildGraph } = await import("../graph/pipeline");
   const graph = buildGraph();
 
   const initial = {
-    feature_id: randomUUID(), feature_title: feature, feature_description: feature,
+    feature_id: featureId, feature_title: feature, feature_description: feature,
     repo_path: hostPath, requested_by: "cli", created_at: new Date().toISOString(),
     current_stage: "pm_brainstorm" as const, stage_history: [], kickbacks: [],
     retry_counts: {}, max_retries: maxRetry, deliverables: {}, human_approvals: {},
     jira: {}, github: {}, figma: {}, slack: {}, deployment: {}, stage_log: [], escalated: false,
   };
 
-  const stream = await (graph as any).stream(initial, { streamMode: "values" });
+  // thread_id ties this run to the MemorySaver checkpoint.
+  // On --resume, the same thread_id lets LangGraph restore the last saved state.
+  const streamConfig = { streamMode: "values", configurable: { thread_id: featureId } };
+  const stream = await (graph as any).stream(resuming ? null : initial, streamConfig);
+
+  let lastPrintedLogCount = 0;
+
   for await (const state of stream) {
     const s = state as any;
 
-    // Print every new log entry emitted this step
+    // Only print NEW log entries added since last tick (stage_log accumulates)
     const allLogs: any[] = s.stage_log ?? [];
-    const lastLog = allLogs[allLogs.length - 1];
-    if (lastLog) {
-      const icon = lastLog.event === "completed"   ? "✓"
-                 : lastLog.event === "kicked_back"  ? "↩"
-                 : lastLog.event === "human_gate"   ? "⏸"
+    const newLogs = allLogs.slice(lastPrintedLogCount);
+    lastPrintedLogCount = allLogs.length;
+
+    for (const log of newLogs) {
+      const icon = log.event === "completed"   ? "✓"
+                 : log.event === "kicked_back"  ? "↩"
+                 : log.event === "human_gate"   ? "⏸"
                  : "→";
-      console.log(`  ${icon} [${lastLog.stage ?? s.current_stage}] ${lastLog.detail}`);
+      console.log(`  ${icon} [${log.stage ?? s.current_stage}] ${log.detail}`);
     }
 
-    // Kickback detail
+    // Kickback detail (only for the latest kickback, once)
     const allKBs: any[] = s.kickbacks ?? [];
-    const lastKB = allKBs[allKBs.length - 1];
+    const lastKB  = allKBs[allKBs.length - 1];
+    const lastLog = newLogs[newLogs.length - 1];
     if (lastKB && lastLog?.event === "kicked_back") {
       console.log(`       ↩ Kickback #${lastKB.retry_count}: ${lastKB.detail}`);
       console.log(`         Fix: ${lastKB.actionable}`);
@@ -76,10 +134,13 @@ async function runFeaturePipeline() {
     }
     if (s.current_stage === "escalated" || s.escalated) {
       console.log(`\n  ✗ Pipeline escalated (max retries or unrecoverable error)`);
-      console.log(`    Reason: ${s.escalation_reason ?? "see memory/runtime/pipeline.log.md"}\n`);
+      console.log(`    Reason: ${s.escalation_reason ?? "see memory/runtime/pipeline.log.md"}`);
+      console.log(`    Resume: npm run pipeline:feature --resume\n`);
     }
   }
 }
+
+// ── Bug pipeline ──────────────────────────────────────────────────────────────
 
 async function runBugCLI() {
   const summary     = get("--summary") ?? get("--bug") ?? "Bug report";
@@ -100,6 +161,8 @@ async function runBugCLI() {
   console.log(`  Fix PR:  ${result.fix_pr_url ?? "N/A"}`);
   console.log(`  Fixed:   ${result.verification?.repro_test_passed ? "YES" : "NO"}\n`);
 }
+
+// ── Entry point ───────────────────────────────────────────────────────────────
 
 async function main() {
   if (mode === "bug") await runBugCLI();
