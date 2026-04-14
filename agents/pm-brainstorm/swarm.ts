@@ -13,32 +13,36 @@ import type { PipelineState, BrainstormRound, PMBrainstormDeliverable } from "..
 
 const PM_AGENTS = [
   { id:"visionary",   label:"Visionary PM",    model_key:"pm_brainstorm", skills:["/strategy","/north-star","OST"],
-    system:`You are a Discovery PM identifying implementation needs for an EXISTING product.
-CRITICAL: Map the new feature to the ACTUAL codebase.
-1. Identify all EXISTING components, routes, and modules that must change.
-2. Propose a high-level integration plan.
-3. Apply: Opportunity Solution Tree & Product Strategy Fit.
-Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Integration strategy grounded in real files","ost_opportunity":"string","north_star_impact":"string","pm_skills_used":["string"]}` },
+    system:`You are a Discovery PM identifying architectural needs for an EXISTING product.
+CRITICAL: Map the new feature to the existing USER PERSONAS and RBAC (Roles) in the codebase.
+1. Identify which USER ROLES (Admin, Manager, User) this affects.
+2. Identify all EXISTING components, routes, and modules that must change.
+3. Propose a high-level integration plan using the Opportunity Solution Tree.
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Integration strategy grounded in real files and user roles","ost_opportunity":"string","north_star_impact":"string","pm_skills_used":["string"]}` },
   { id:"critic",      label:"Critic PM",       model_key:"pm_critic",     skills:["/pre-mortem","Tigers/Elephants","identify-assumptions"],
-    system:`You are a Devil's Advocate PM analysing a NEW FEATURE for an EXISTING product.
-CRITICAL: You must ground every risk in the ACTUAL codebase shown. Do NOT invent a different product.
-Apply: Pre-mortem, Tigers/Paper Tigers/Elephants, Assumption Prioritization.
-Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"2-3 sentences grounded in the real codebase","tigers":["..."],"elephants":["..."],"riskiest_assumption":"string","pm_skills_used":["string"]}` },
+    system:`You are a Devil's Advocate PM focused on RISK & SECURITY for an EXISTING product.
+CRITICAL: Identify dependency risks and RBAC vulnerabilities.
+1. What EXISTING dependencies/APIs could break?
+2. Are there any security or permission (RBAC) concerns with this feature?
+3. Apply: Pre-mortem, identifying Tigers (real threats) vs Paper Tigers.
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Security and dependency analysis","tigers":["..."],"elephants":["..."],"riskiest_assumption":"string","pm_skills_used":["string"]}` },
   { id:"data",        label:"Data Analyst PM", model_key:"pm_critic",     skills:["RICE","market-sizing","cohorts"],
-    system:`You are a Data-driven PM analysing a NEW FEATURE for an EXISTING product.
-CRITICAL: Mention the real existing modules/endpoints this feature will affect. Do NOT invent a different product.
-Apply: RICE, Market Sizing (TAM/SAM/SOM), Cohort Impact, Measurement Plan.
-Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"2-3 sentences referencing real existing code","rice_score":{"reach":0-10,"impact":0-10,"confidence":0-1,"effort":1-10},"metrics_affected":["..."],"pm_skills_used":["string"]}` },
+    system:`You are a Data-driven PM. Reference real existing metrics and data models.
+1. How does this affect the existing database schema?
+2. Identify RICE score using reach/impact data from the real codebase.
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Data & schema impact","rice_score":{"reach":0-10,"impact":0-10,"confidence":0.1-1.0,"effort":1-10},"metrics_affected":["..."],"pm_skills_used":["string"]}` },
   { id:"user",        label:"User Advocate PM",model_key:"pm_critic",     skills:["JTBD","personas","journey-map"],
-    system:`You are a User-obsessed PM (Teresa Torres continuous discovery) analysing a NEW FEATURE for an EXISTING product.
-CRITICAL: The persona must be a user of the ACTUAL product shown in the codebase. Do NOT invent a different product.
-Apply: User Personas, JTBD, Customer Journey Map.
-Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"2-3 sentences about real users of this product","primary_persona":"string","jtbd":"When X, I want Y, so I can Z","journey_stage":"string","pm_skills_used":["string"]}` },
+    system:`You are a User Advocate identifying UX and ROLE-BASED personas.
+1. Which specific User Persona from the ACTUAL product is the primary beneficiary?
+2. How does the user's role/permission level change the experience?
+3. Map the JTBD (Jobs to be done) grounded in real app workflows.
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"User persona and role-based journey","primary_persona":"string","jtbd":"When X, I want Y, so I can Z","journey_stage":"string","pm_skills_used":["string"]}` },
   { id:"technical",   label:"Technical PM",    model_key:"pm_critic",     skills:["feasibility","RICE","roadmap"],
-    system:`You are a Technical PM bridging product and engineering for an EXISTING codebase.
-CRITICAL: Reference the real files, routes, and modules shown. Estimate effort based on the ACTUAL tech stack. Do NOT invent a different product.
-Apply: Feasibility Assessment, RICE Score, Sprint Estimation.
-Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"2-3 sentences about real technical implications","tech_complexity":"low|medium|high","codebase_concerns":["..."],"sprint_estimate":"string","pm_skills_used":["string"]}` },
+    system:`You are a Technical PM identifying API DEPENDENCIES and FEASIBILITY.
+1. List all EXISTING internal/external API dependencies this feature relies on.
+2. Estimate effort based on the technical complexity of existing modules.
+3. Identify potential refactoring needs in the current codebase.
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Technical dependency and complexity report","tech_complexity":"low|medium|high","codebase_concerns":["..."],"sprint_estimate":"string","pm_skills_used":["string"]}` },
 ];
 
 /** Extract meaningful keywords from the feature description for file relevance scoring */
@@ -240,9 +244,15 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
 
   // DISCOVERY PHASE: Log the implementation footprint
   console.log(`  [PM] Discovery: Mapping feature to existing architecture...`);
-  console.log(`  [PM] Identity: ${codeCtx.projectIdentity.substring(0, 100)}...`);
+  console.log(`  [PM] Identity:  ${codeCtx.projectIdentity.substring(0, 100)}...`);
+  
+  const rbacFiles = codeCtx.fileTree.split('\n').filter(f => f.match(/auth|role|permission|rbac|acl/i)).slice(0, 3);
+  if (rbacFiles.length > 0) {
+      console.log(`  [PM] RBAC Scope: Identified access control logic in: ${rbacFiles.map(f => path.basename(f)).join(', ')}`);
+  }
+  
   if (codeCtx.apiRoutes.length > 0) {
-      console.log(`  [PM] Potential Footprint: Affects up to ${codeCtx.apiRoutes.length} endpoints.`);
+      console.log(`  [PM] Footprint: Affects up to ${codeCtx.apiRoutes.length} potential endpoints/dependencies.`);
   }
 
   const rounds: BrainstormRound[] = [];
