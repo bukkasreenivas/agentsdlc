@@ -175,8 +175,17 @@ async function handleRequest(
     const envPath = path.resolve(__dirname, "../.env");
     let envContent = "";
     if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, "utf8");
+
+    // Prefer explicit PROJECT_GIT_URL; fall back to constructing from GITHUB_OWNER + GITHUB_REPO
+    let gitUrl = envContent.match(/^PROJECT_GIT_URL=(.*)$/m)?.[1] ?? "";
+    if (!gitUrl) {
+      const owner = envContent.match(/^GITHUB_OWNER=(.*)$/m)?.[1] ?? "";
+      const repo  = envContent.match(/^GITHUB_REPO=(.*)$/m)?.[1] ?? "";
+      if (owner && repo) gitUrl = `https://github.com/${owner}/${repo}.git`;
+    }
+
     const settings = {
-      project_git_url:   envContent.match(/^PROJECT_GIT_URL=(.*)$/m)?.[1] ?? "",
+      project_git_url:   gitUrl,
       host_project_path: envContent.match(/^HOST_PROJECT_PATH=(.*)$/m)?.[1] ?? "",
       llm_provider:      envContent.match(/^LLM_PROVIDER=(.*)$/m)?.[1] ?? "",
       jira_project_key:  envContent.match(/^JIRA_PROJECT_KEY=(.*)$/m)?.[1] ?? "",
@@ -228,8 +237,22 @@ async function handleRequest(
     const envPath = path.resolve(__dirname, "../.env");
     let envContent = "";
     if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, "utf8");
+
+    // If project_git_url is a GitHub HTTPS URL, also keep GITHUB_OWNER/REPO/BASE_BRANCH in sync
+    const gitUrl = (body.project_git_url as string | undefined)?.trim() ?? "";
+    if (gitUrl) {
+      const ghMatch = gitUrl.match(/github\.com[/:]([\/\w.-]+?)\/([\/\w.-]+?)(\.git)?$/);
+      if (ghMatch) {
+        body.github_owner = ghMatch[1];
+        body.github_repo  = ghMatch[2];
+        // Preserve existing base branch or default to main
+        if (!body.github_base_branch) {
+          body.github_base_branch = envContent.match(/^GITHUB_BASE_BRANCH=(.*)$/m)?.[1] ?? "main";
+        }
+      }
+    }
     
-    // Update or append settings
+    // Update or append each setting key in the .env file
     for (const [k, v] of Object.entries(body)) {
       const key = k.toUpperCase();
       const regex = new RegExp(`^${key}=.*$`, "m");
