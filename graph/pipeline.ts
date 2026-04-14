@@ -120,9 +120,8 @@ function routeAfterPMBrainstorm(state: PipelineState): string {
   const d = state.deliverables?.pm_brainstorm?.content as any;
   if (!d) return "escalate";
   if (d.consensus?.build_decision === "reject") return "escalate";  // PM hard-rejects
-  // "modify" and "proceed" both advance to PO.
-  // Looping pm_brainstorm without human input adds no value — the PO agent
-  // and human gates handle scope refinement from here.
+  
+  if (state.pipeline_mode === "idea") return "pm_promote_gate";
   return "po";
 }
 
@@ -163,7 +162,7 @@ function routeAfterReview(state: PipelineState): string {
   const d = state.deliverables?.review?.content as any;
   if (!d) return "escalate";
   if (d.decision === "changes_requested") return "dev_swarm"; // Kick back to dev with comments
-  return "cicd";
+  return "code_pr_gate";
 }
 
 function routeAfterCICD(state: PipelineState): string {
@@ -276,12 +275,52 @@ async function webUIGate(
     }
   }
 
-  // Timeout — fall back to terminal
+// Timeout — fall back to terminal
   deletePending(state.feature_id, stage);
   console.log("  [gate] 30-min timeout — falling back to terminal prompt");
   return askTerminalApproval(
     `  ▶  [${stageLabel}] Approve and continue?  [Enter/Y = approve  |  type feedback = revise]: `
   );
+}
+
+async function pmPromoteGateNode(state: any): Promise<Partial<PipelineState>> {
+  if (state.human_approvals?.pm_promote?.approved === true) {
+    console.log("  [pm_promote_gate] Already approved — skipping gate (resuming from checkpoint)");
+    return {};
+  }
+  const pmContent = state.deliverables?.pm_brainstorm?.content as any;
+  const retries   = state.retry_counts?.pm_promote ?? 0;
+
+  console.log("\n  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  ⏸  PM PROMOTE GATE — Review PRD before Jira Handoff");
+  console.log("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+  const { approved, comment } = await webUIGate(
+    "pm_promote", "PM Idea Promotion", state, "Review AI PRD & Synthesized Idea", pmContent ?? {}
+  );
+  logStage(state, "pm_promote", "human_gate", approved ? "Promoted to PO" : `Rejected: ${comment}`);
+
+  if (approved) {
+    console.log("\n  ✓ Approved — promoting to PO / Jira\n");
+    return { 
+      pipeline_mode: "feature", // Switch mode from idea to execution
+      human_approvals: { ...state.human_approvals, pm_promote: { approved: true, comment } } 
+    };
+  }
+
+  console.log(`\n  ↩ Sending back to PM agent with feedback: "${comment}"\n`);
+  return {
+    human_approvals: { ...state.human_approvals, pm_promote: { approved: false, comment } },
+    kickbacks: [{
+      stage:       "pm_brainstorm" as StageId,
+      reason:      "pm_fit_rejected" as KickbackRecord["reason"],
+      detail:      comment,
+      retry_count: retries + 1,
+      timestamp:   new Date().toISOString(),
+      actionable:  comment,
+    }],
+    retry_counts: { ...state.retry_counts, pm_promote: retries + 1 },
+  };
 }
 
 async function poGateNode(state: any): Promise<Partial<PipelineState>> {
@@ -409,6 +448,44 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
   };
 }
 
+async function codePrGateNode(state: any): Promise<Partial<PipelineState>> {
+  if (state.human_approvals?.code_pr?.approved === true) {
+    console.log("  [code_pr_gate] Already approved — skipping gate");
+    return {};
+  }
+
+  const reviewContent = state.deliverables?.review?.content as any;
+  const retries = state.retry_counts?.code_pr ?? 0;
+
+  console.log("\n  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  ⏸  CODE PR GATE — Requires manual PR merge approval");
+  console.log("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+  const prUrl = state.github?.pr_url ?? "Review codebase before CI/CD";
+
+  const { approved, comment } = await webUIGate(
+    "code_pr", "Code PR Review", state, "Approve the Code PR before CI/CD deployment", { prUrl, comments: reviewContent?.comments }
+  );
+
+  logStage(state, "code_pr", "human_gate", approved ? "PR Approved" : `PR Rejected: ${comment}`);
+
+  if (approved) {
+    console.log("\n  ✓ PR Approved — proceeding to CI/CD Deployment\n");
+    return { human_approvals: { ...state.human_approvals, code_pr: { approved: true, comment } } };
+  }
+
+  console.log(`\n  ↩ Returning to dev_swarm to address PR feedback: "${comment}"\n`);
+  return {
+    human_approvals: { ...state.human_approvals, code_pr: { approved: false, comment } },
+    kickbacks: [{
+      stage: "dev_swarm" as StageId, reason: "review_changes_req" as KickbackRecord["reason"],
+      detail: comment, retry_count: retries + 1,
+      timestamp: new Date().toISOString(), actionable: comment,
+    }],
+    retry_counts: { ...state.retry_counts, code_pr: retries + 1 },
+  };
+}
+
 async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
   if (state.human_approvals?.qa?.approved === true) {
     console.log("  [qa_gate] Already approved — skipping gate (resuming from checkpoint)");
@@ -507,6 +584,7 @@ const PipelineAnnotation = Annotation.Root({
   repo_path:           Annotation<string>({ value: (_, b) => b, default: () => "" }),
   requested_by:        Annotation<string>({ value: (_, b) => b, default: () => "" }),
   created_at:          Annotation<string>({ value: (_, b) => b, default: () => new Date().toISOString() }),
+  pipeline_mode:       Annotation<"idea" | "feature">({ value: (_, b) => b, default: () => "feature" }),
   current_stage:       Annotation<StageId>({ value: (_, b) => b, default: () => "pm_brainstorm" as StageId }),
   next_stage:          Annotation<StageId | null>({ value: (_, b) => b, default: () => null }),
   stage_history:       Annotation<StageId[]>({
@@ -542,6 +620,7 @@ export function buildGraph() {
 
   // Add nodes
   graph.addNode("pm_brainstorm", wrapNode("pm_brainstorm", runPMBrainstormSwarm, { sod_role: "maker" }));
+  graph.addNode("pm_promote_gate", pmPromoteGateNode);
   graph.addNode("po",            wrapNode("po",            runPOAgent,            { sod_role: "maker" }));
   graph.addNode("po_gate",       poGateNode);
   graph.addNode("design",        wrapNode("design",        runDesignAgent,        { sod_role: "maker" }));
@@ -550,6 +629,7 @@ export function buildGraph() {
   graph.addNode("dev_swarm",     wrapNode("dev_swarm",     runDevSwarm,           { sod_role: "maker" }));
   graph.addNode("nfr",           wrapNode("nfr",           runNFRAgent,           { sod_role: "checker" }));
   graph.addNode("review",        wrapNode("review",        runReviewAgent,        { sod_role: "checker" }));
+  graph.addNode("code_pr_gate",  codePrGateNode);
   graph.addNode("cicd",          wrapNode("cicd",          runCICDAgent,          { sod_role: "executor" }));
   graph.addNode("qa",            wrapNode("qa",            runQAAgent,            { sod_role: "executor" }));
   graph.addNode("qa_gate",       qaGateNode);
@@ -559,12 +639,19 @@ export function buildGraph() {
   // Start
   graph.addEdge(START, "pm_brainstorm");
 
-  // PM brainstorm: may loop (modify) or proceed (proceed) or escalate (reject/max retries)
   graph.addConditionalEdges("pm_brainstorm", routeAfterPMBrainstorm, {
-    pm_brainstorm: "pm_brainstorm",
-    po:            "po",
-    escalate:      "escalate",
+    pm_brainstorm:   "pm_brainstorm",
+    pm_promote_gate: "pm_promote_gate",
+    po:              "po",
+    escalate:        "escalate",
   });
+
+  graph.addConditionalEdges("pm_promote_gate", (s: any) => {
+    const a = s.human_approvals?.pm_promote;
+    if (a?.approved === true)  return "po";
+    if (a?.approved === false) return "pm_brainstorm";
+    return "__end__";
+  }, { po: "po", pm_brainstorm: "pm_brainstorm", __end__: END });
 
   // PO always routes to po_gate (which prompts the human).
   // Gate's conditional edge then routes: approved→design, rejected→po, no-decision→END
@@ -609,12 +696,19 @@ export function buildGraph() {
     escalate:  "escalate",
   });
 
-  // Review: approve → CI/CD, changes_requested → dev_swarm kickback
+  // Review: approve → code_pr_gate, changes_requested → dev_swarm kickback
   graph.addConditionalEdges("review", routeAfterReview, {
-    dev_swarm: "dev_swarm",
-    cicd:      "cicd",
-    escalate:  "escalate",
+    dev_swarm:    "dev_swarm",
+    code_pr_gate: "code_pr_gate",
+    escalate:     "escalate",
   });
+
+  graph.addConditionalEdges("code_pr_gate", (s: any) => {
+    const a = s.human_approvals?.code_pr;
+    if (a?.approved === true)  return "cicd";
+    if (a?.approved === false) return "dev_swarm";
+    return "__end__";
+  }, { cicd: "cicd", dev_swarm: "dev_swarm", __end__: END });
 
   // CI/CD: success → QA, failed → dev kickback
   graph.addConditionalEdges("cicd", routeAfterCICD, {

@@ -114,26 +114,35 @@ async function handleRequest(
 
   // ── GET /api/features ───────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/features") {
-    json(res, listFeatures());
+    json(res, listFeatures("features"));
+    return;
+  }
+
+  // ── GET /api/ideas ──────────────────────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/ideas") {
+    json(res, listFeatures("ideas"));
     return;
   }
 
   // ── GET /api/pending ────────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/pending") {
-    json(res, listAllPending());
+    const pendingF = listAllPending("features");
+    const pendingI = listAllPending("ideas");
+    json(res, [...pendingF, ...pendingI].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()));
     return;
   }
 
-  // ── GET /api/features/:id ───────────────────────────────────────────────────
-  const featureMatch = pathname.match(/^\/api\/features\/([^/]+)$/);
-  if (method === "GET" && featureMatch) {
-    const featureId = featureMatch[1];
-    const manifest  = readManifest(featureId);
-    if (!manifest) { notFound(res, `Feature ${featureId} not found`); return; }
+  // ── GET /api/features/:id (or /api/ideas/:id) ───────────────────────────────
+  const itemMatch = pathname.match(/^\/api\/(features|ideas)\/([^/]+)$/);
+  if (method === "GET" && itemMatch) {
+    const type     = itemMatch[1] as "features" | "ideas";
+    const itemId   = itemMatch[2];
+    const manifest = readManifest(itemId, type);
+    if (!manifest) { notFound(res, `Item ${itemId} not found`); return; }
 
-    // Read all stage files for this feature
+    // Read all stage files for this feature/idea
     const stagesData: Record<string, unknown> = {};
-    const dir = featureDir(featureId);
+    const dir = featureDir(itemId, type);
     if (fs.existsSync(dir)) {
       for (const fname of fs.readdirSync(dir)) {
         const m = fname.match(/^([a-z_]+)\.json$/);
@@ -149,13 +158,14 @@ async function handleRequest(
     return;
   }
 
-  // ── GET /api/features/:id/:stage ────────────────────────────────────────────
-  const stageMatch = pathname.match(/^\/api\/features\/([^/]+)\/([^/]+)$/);
+  // ── GET /api/features/:id/:stage (or /api/ideas/:id/:stage) ─────────────────
+  const stageMatch = pathname.match(/^\/api\/(features|ideas)\/([^/]+)\/([^/]+)$/);
   if (method === "GET" && stageMatch) {
-    const featureId = stageMatch[1];
-    const stage     = stageMatch[2];
-    const data      = readStageData(featureId, stage);
-    if (!data) { notFound(res, `Stage ${stage} not found for feature ${featureId}`); return; }
+    const type      = stageMatch[1] as "features" | "ideas";
+    const featureId = stageMatch[2];
+    const stage     = stageMatch[3];
+    const data      = readStageData(featureId, stage, type);
+    if (!data) { notFound(res, `Stage ${stage} not found for item ${featureId}`); return; }
     json(res, data);
     return;
   }
@@ -169,7 +179,7 @@ async function handleRequest(
       badRequest(res, "Invalid JSON body"); return;
     }
 
-    const { featureId, stage, approved, comment, approvedBy } = body;
+    const { featureId, stage, approved, comment, approvedBy, type = "features" } = body;
     if (!featureId || !stage || approved === undefined) {
       badRequest(res, "Required: featureId, stage, approved"); return;
     }
@@ -183,12 +193,12 @@ async function handleRequest(
       approvedAt: new Date().toISOString(),
     };
 
-    writeApproval(featureId, stage, rec);
-    deletePending(featureId, stage);
+    writeApproval(featureId, stage, rec, type as "features" | "ideas");
+    deletePending(featureId, stage, type as "features" | "ideas");
 
     // Commit approval to git
     const verb = approved ? "approved" : "rejected";
-    commitToGit(featureId, `${stage} ${verb} by ${rec.approvedBy}`);
+    commitToGit(featureId, `${stage} ${verb} by ${rec.approvedBy}`, type as "features" | "ideas");
 
     console.log(`\n  [UI] ${stage} ${verb} for ${featureId.slice(0, 8)} — "${comment ?? ""}"`);
     json(res, { ok: true, record: rec });

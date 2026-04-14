@@ -55,4 +55,7 @@ export const integrations = {
     videosDir: opt("PLAYWRIGHT_VIDEOS_DIR", "./qa-videos"),
     slowMo:    parseInt(opt("PLAYWRIGHT_SLOW_MO", "0"), 10),
   },
+  project: {
+    gitUrl:    opt("PROJECT_GIT_URL"),
+  },
 };

@@ -24,16 +24,18 @@ import { execSync } from "child_process";
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 
-export function featuresDir(): string {
-  return path.join(PROJECT_ROOT, "memory", "features");
+export type StoreType = "features" | "ideas";
+
+export function featuresDir(type: StoreType = "features"): string {
+  return path.join(PROJECT_ROOT, "memory", type);
 }
 
-export function featureDir(featureId: string): string {
-  return path.join(featuresDir(), featureId);
+export function featureDir(featureId: string, type: StoreType = "features"): string {
+  return path.join(featuresDir(type), featureId);
 }
 
-function ensure(featureId: string): void {
-  fs.mkdirSync(featureDir(featureId), { recursive: true });
+function ensure(featureId: string, type: StoreType = "features"): void {
+  fs.mkdirSync(featureDir(featureId, type), { recursive: true });
 }
 
 // ── Manifest ─────────────────────────────────────────────────────────────────
@@ -45,49 +47,50 @@ export interface FeatureManifest {
   updatedAt:    string;
   repoPath:     string;
   requestedBy:  string;
-  stages:       string[];           // completed stage ids in order
+  stages:       string[];
   currentStage: string;
   status:       "running" | "done" | "escalated";
   jira?:        { epicKey?: string; storyKeys?: string[] };
   github?:      { prUrl?: string };
+  storeType?:   StoreType; // helps UI determine if idea or feature
 }
 
-export function writeManifest(featureId: string, manifest: FeatureManifest): void {
-  ensure(featureId);
+export function writeManifest(featureId: string, manifest: FeatureManifest, type: StoreType = "features"): void {
+  ensure(featureId, type);
   fs.writeFileSync(
-    path.join(featureDir(featureId), "manifest.json"),
+    path.join(featureDir(featureId, type), "manifest.json"),
     JSON.stringify(manifest, null, 2)
   );
 }
 
-export function readManifest(featureId: string): FeatureManifest | null {
-  const f = path.join(featureDir(featureId), "manifest.json");
+export function readManifest(featureId: string, type: StoreType = "features"): FeatureManifest | null {
+  const f = path.join(featureDir(featureId, type), "manifest.json");
   if (!fs.existsSync(f)) return null;
   try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; }
 }
 
-export function listFeatures(): FeatureManifest[] {
-  const dir = featuresDir();
+export function listFeatures(type: StoreType = "features"): FeatureManifest[] {
+  const dir = featuresDir(type);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
     .filter(d => fs.statSync(path.join(dir, d)).isDirectory())
-    .map(d => readManifest(d))
+    .map(d => readManifest(d, type))
     .filter((m): m is FeatureManifest => m !== null)
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
 }
 
 // ── Stage deliverable ─────────────────────────────────────────────────────────
 
-export function writeStageData(featureId: string, stage: string, data: unknown): void {
-  ensure(featureId);
+export function writeStageData(featureId: string, stage: string, data: unknown, type: StoreType = "features"): void {
+  ensure(featureId, type);
   fs.writeFileSync(
-    path.join(featureDir(featureId), `${stage}.json`),
+    path.join(featureDir(featureId, type), `${stage}.json`),
     JSON.stringify({ stage, data, writtenAt: new Date().toISOString() }, null, 2)
   );
 }
 
-export function readStageData(featureId: string, stage: string): unknown | null {
-  const f = path.join(featureDir(featureId), `${stage}.json`);
+export function readStageData(featureId: string, stage: string, type: StoreType = "features"): unknown | null {
+  const f = path.join(featureDir(featureId, type), `${stage}.json`);
   if (!fs.existsSync(f)) return null;
   try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; }
 }
@@ -108,37 +111,37 @@ export interface PendingGate {
   timeoutAt:    string;       // ISO — UI shows a countdown
 }
 
-export function writePending(featureId: string, stage: string, pending: PendingGate): void {
-  ensure(featureId);
+export function writePending(featureId: string, stage: string, pending: PendingGate, type: StoreType = "features"): void {
+  ensure(featureId, type);
   fs.writeFileSync(
-    path.join(featureDir(featureId), `${stage}.pending.json`),
+    path.join(featureDir(featureId, type), `${stage}.pending.json`),
     JSON.stringify(pending, null, 2)
   );
 }
 
-export function deletePending(featureId: string, stage: string): void {
-  const f = path.join(featureDir(featureId), `${stage}.pending.json`);
+export function deletePending(featureId: string, stage: string, type: StoreType = "features"): void {
+  const f = path.join(featureDir(featureId, type), `${stage}.pending.json`);
   if (fs.existsSync(f)) fs.unlinkSync(f);
 }
 
-export function readPending(featureId: string, stage: string): PendingGate | null {
-  const f = path.join(featureDir(featureId), `${stage}.pending.json`);
+export function readPending(featureId: string, stage: string, type: StoreType = "features"): PendingGate | null {
+  const f = path.join(featureDir(featureId, type), `${stage}.pending.json`);
   if (!fs.existsSync(f)) return null;
   try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; }
 }
 
-export function listAllPending(): PendingGate[] {
-  const dir = featuresDir();
+export function listAllPending(type: StoreType = "features"): PendingGate[] {
+  const dir = featuresDir(type);
   if (!fs.existsSync(dir)) return [];
   const results: PendingGate[] = [];
   for (const fid of fs.readdirSync(dir)) {
-    const featureDir2 = path.join(dir, fid);
-    if (!fs.statSync(featureDir2).isDirectory()) continue;
-    for (const fname of fs.readdirSync(featureDir2)) {
+    const d = path.join(dir, fid);
+    if (!fs.statSync(d).isDirectory()) continue;
+    for (const fname of fs.readdirSync(d)) {
       if (fname.endsWith(".pending.json")) {
         try {
-          results.push(JSON.parse(fs.readFileSync(path.join(featureDir2, fname), "utf8")));
-        } catch { /* skip corrupt files */ }
+          results.push(JSON.parse(fs.readFileSync(path.join(d, fname), "utf8")));
+        } catch { /* skip */ }
       }
     }
   }
@@ -156,15 +159,15 @@ export interface ApprovalRecord {
   approvedAt:  string;
 }
 
-export function writeApproval(featureId: string, stage: string, rec: ApprovalRecord): void {
-  ensure(featureId);
+export function writeApproval(featureId: string, stage: string, rec: ApprovalRecord, type: StoreType = "features"): void {
+  ensure(featureId, type);
   // Per-stage approval file (polled by webUIGate)
   fs.writeFileSync(
-    path.join(featureDir(featureId), `${stage}.approval.json`),
+    path.join(featureDir(featureId, type), `${stage}.approval.json`),
     JSON.stringify(rec, null, 2)
   );
   // Append to audit log
-  const auditPath = path.join(featureDir(featureId), "approvals.json");
+  const auditPath = path.join(featureDir(featureId, type), "approvals.json");
   let history: ApprovalRecord[] = [];
   if (fs.existsSync(auditPath)) {
     try { history = JSON.parse(fs.readFileSync(auditPath, "utf8")); } catch { history = []; }
@@ -173,14 +176,14 @@ export function writeApproval(featureId: string, stage: string, rec: ApprovalRec
   fs.writeFileSync(auditPath, JSON.stringify(history, null, 2));
 }
 
-export function readApproval(featureId: string, stage: string): ApprovalRecord | null {
-  const f = path.join(featureDir(featureId), `${stage}.approval.json`);
+export function readApproval(featureId: string, stage: string, type: StoreType = "features"): ApprovalRecord | null {
+  const f = path.join(featureDir(featureId, type), `${stage}.approval.json`);
   if (!fs.existsSync(f)) return null;
   try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; }
 }
 
-export function readApprovalHistory(featureId: string): ApprovalRecord[] {
-  const f = path.join(featureDir(featureId), "approvals.json");
+export function readApprovalHistory(featureId: string, type: StoreType = "features"): ApprovalRecord[] {
+  const f = path.join(featureDir(featureId, type), "approvals.json");
   if (!fs.existsSync(f)) return [];
   try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return []; }
 }
@@ -189,11 +192,11 @@ export function readApprovalHistory(featureId: string): ApprovalRecord[] {
 // Commits memory/features/<featureId>/ to git so every output is traceable.
 // Non-blocking: logs warnings on failure (e.g. not a git repo, nothing staged).
 
-export function commitToGit(featureId: string, message: string): void {
+export function commitToGit(featureId: string, message: string, type: StoreType = "features"): void {
   try {
     // Resolve host project root (parent of .agentsdlc/)
     const hostRoot = path.resolve(PROJECT_ROOT, "..");
-    const relPath  = path.relative(hostRoot, featureDir(featureId));
+    const relPath  = path.relative(hostRoot, featureDir(featureId, type));
 
     execSync(`git add "${relPath}"`, { cwd: hostRoot, stdio: "pipe" });
     execSync(
@@ -215,9 +218,9 @@ export function commitToGit(featureId: string, message: string): void {
 // every node. This is separate from the memory/checkpoints/ used by --resume.
 // The feature store is for human review; checkpoints are for machine recovery.
 
-export function syncFromPipelineState(featureId: string, state: any): void {
+export function syncFromPipelineState(featureId: string, state: any, type: StoreType = "features"): void {
   try {
-    const manifest = readManifest(featureId);
+    const manifest = readManifest(featureId, type);
     const stages = Object.keys(state.deliverables ?? {}).filter(
       k => state.deliverables[k]?.validated
     );
@@ -236,11 +239,12 @@ export function syncFromPipelineState(featureId: string, state: any): void {
                   : "running",
       jira:   { epicKey: state.jira?.epic_key, storyKeys: state.jira?.story_keys },
       github: { prUrl: state.github?.pr_url },
-    });
+      storeType: type,
+    }, type);
 
     // Write each validated deliverable as its own file for the UI
     for (const [stage, deliverable] of Object.entries(state.deliverables ?? {})) {
-      if (deliverable) writeStageData(featureId, stage, deliverable);
+      if (deliverable) writeStageData(featureId, stage, deliverable, type);
     }
   } catch (err: any) {
     console.warn(`  [feature-store] sync failed: ${err?.message}`);

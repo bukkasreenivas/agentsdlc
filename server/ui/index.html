@@ -3,193 +3,350 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentSDLC — Approvals</title>
+<title>AgentSDLC — PM Workspace</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:      #0f1117;
-    --surface: #1a1d27;
-    --border:  #2d3148;
-    --accent:  #6c63ff;
-    --green:   #22c55e;
-    --red:     #ef4444;
-    --yellow:  #f59e0b;
-    --text:    #e2e8f0;
-    --muted:   #64748b;
-    --card:    #1e2235;
+    --bg:        #080a11;
+    --surface:   rgba(255, 255, 255, 0.03);
+    --surface-hover: rgba(255, 255, 255, 0.07);
+    --border:    rgba(255, 255, 255, 0.08);
+    --accent:    #00e6ff;
+    --accent-glow: rgba(0, 230, 255, 0.2);
+    --green:     #10b981;
+    --red:       #ef4444;
+    --yellow:    #f59e0b;
+    --text:      #f8fafc;
+    --muted:     #94a3b8;
+    --card:      rgba(20, 23, 38, 0.6);
+    --glass:     backdrop-filter: blur(10px);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+  body { 
+    font-family: 'Outfit', system-ui, sans-serif; 
+    background: radial-gradient(circle at 50% -20%, #171b30, var(--bg) 60%);
+    color: var(--text); 
+    display: flex; 
+    flex-direction: column;
+    height: 100vh; 
+    overflow: hidden; 
+  }
+
+  /* ── Header ── */
+  header {
+    height: 60px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--surface);
+    backdrop-filter: blur(12px);
+    z-index: 10;
+  }
+  .logo { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: 0.03em; display: flex; align-items: center; gap: 8px;}
+  .logo span { color: var(--accent); }
+  .new-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 0 10px var(--accent-glow);
+  }
+  .new-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 15px var(--accent-glow); }
+
+  /* ── Layout ── */
+  #app-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
 
   /* ── Sidebar ── */
-  #sidebar { width: 280px; min-width: 220px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
-  #sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); }
-  #sidebar-header h1 { font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: 0.05em; }
-  #sidebar-header p  { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  #pending-badge { display: inline-block; background: var(--yellow); color: #000; border-radius: 9999px; padding: 1px 7px; font-size: 10px; font-weight: 700; margin-left: 6px; }
-  #feature-list { flex: 1; overflow-y: auto; }
-  .feature-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.15s; }
-  .feature-item:hover { background: var(--card); }
-  .feature-item.active { background: var(--card); border-left: 3px solid var(--accent); }
-  .feature-item .title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .feature-item .meta  { font-size: 10px; color: var(--muted); margin-top: 3px; }
-  .feature-item .stage-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; margin-top: 4px; }
-  .badge-running   { background: #1e3a5f; color: #60a5fa; }
-  .badge-done      { background: #14532d; color: #4ade80; }
-  .badge-escalated { background: #7f1d1d; color: #fca5a5; }
-  .badge-pending   { background: #451a03; color: var(--yellow); }
+  #sidebar { 
+    width: 300px; 
+    background: rgba(10, 12, 18, 0.5); 
+    border-right: 1px solid var(--border); 
+    display: flex; 
+    flex-direction: column; 
+    backdrop-filter: blur(8px);
+  }
+  
+  .mode-toggle {
+    display: flex;
+    margin: 16px;
+    background: rgba(0,0,0,0.4);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    padding: 4px;
+  }
+  .mode-btn {
+    flex: 1;
+    padding: 8px 0;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 6px;
+    color: var(--muted);
+    transition: all 0.2s;
+  }
+  .mode-btn.active {
+    background: var(--surface-hover);
+    color: var(--text);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  #feature-list { flex: 1; overflow-y: auto; padding-bottom: 20px;}
+  .feature-item { 
+    padding: 14px 16px; 
+    cursor: pointer; 
+    border-bottom: 1px solid var(--border); 
+    transition: background 0.15s; 
+    border-left: 3px solid transparent;
+  }
+  .feature-item:hover { background: var(--surface-hover); }
+  .feature-item.active { background: var(--surface); border-left-color: var(--accent); }
+  .feature-item .title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;}
+  .feature-item .meta  { font-size: 11px; color: var(--muted); }
+  
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.05em;}
+  .badge-running   { background: rgba(0, 230, 255, 0.1); color: var(--accent); border: 1px solid rgba(0,230,255,0.2);}
+  .badge-done      { background: rgba(16, 185, 129, 0.1); color: var(--green); border: 1px solid rgba(16,185,129,0.2);}
+  .badge-escalated { background: rgba(239, 68, 68, 0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2);}
+  .badge-pending   { background: rgba(245, 158, 11, 0.15); color: var(--yellow); border: 1px solid rgba(245,158,11,0.3);}
 
   /* ── Main content ── */
-  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  #main-header { padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
-  #main-header h2 { font-size: 16px; font-weight: 700; }
-  #main-header .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+  
+  #main-header { 
+    padding: 24px 32px; 
+    border-bottom: 1px solid var(--border); 
+    background: linear-gradient(180deg, rgba(20,23,38,0.8) 0%, rgba(10,12,18,0.4) 100%);
+  }
+  #main-header h2 { font-size: 20px; font-weight: 600; margin-bottom: 6px;}
+  #main-header .meta { font-size: 13px; color: var(--muted); }
 
   /* ── Tabs ── */
-  #tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 24px; }
-  .tab { padding: 10px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); transition: all 0.15s; }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--yellow); margin-left: 5px; vertical-align: middle; }
+  #tabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border); padding: 16px 32px; background: rgba(10,12,18,0.5); }
+  .tab { 
+    padding: 8px 16px; 
+    font-size: 12px; 
+    font-weight: 500; 
+    cursor: pointer; 
+    border-radius: 6px; 
+    color: var(--muted); 
+    transition: all 0.2s; 
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .tab:hover { color: var(--text); background: var(--surface-hover); }
+  .tab.active { color: var(--accent); background: rgba(0,230,255,0.05); border-color: rgba(0,230,255,0.3); }
+  .tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--yellow); margin-left: 6px; box-shadow: 0 0 6px var(--yellow); }
 
-  /* ── Stage content ── */
-  #content { flex: 1; overflow-y: auto; padding: 24px; }
-  #content .empty { text-align: center; color: var(--muted); margin-top: 80px; font-size: 14px; }
+  /* ── Content Area ── */
+  #content { flex: 1; overflow-y: auto; padding: 32px; padding-bottom: 120px; } /* extra padding for sticking panel */
+  .empty { text-align: center; color: var(--muted); margin-top: 100px; font-size: 15px; }
 
   /* ── Cards ── */
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .card h3 { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
-  .card p, .card li { font-size: 12px; color: #cbd5e1; line-height: 1.6; }
-  .card ul { padding-left: 18px; margin-top: 6px; }
+  .card { 
+    background: var(--card); 
+    border: 1px solid var(--border); 
+    border-radius: 12px; 
+    padding: 24px; 
+    margin-bottom: 24px; 
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    backdrop-filter: blur(10px);
+  }
+  .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--accent); }
+  .card p, .card li { font-size: 13px; color: var(--text); line-height: 1.6; margin-bottom: 6px;}
 
   /* PM memo markdown */
-  .pm-memo { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
-  .pm-memo h1 { font-size: 16px; margin-bottom: 12px; }
-  .pm-memo h2 { font-size: 13px; margin: 14px 0 6px; color: var(--accent); }
-  .pm-memo h3 { font-size: 12px; margin: 10px 0 4px; }
-  .pm-memo p  { font-size: 12px; color: #cbd5e1; line-height: 1.7; margin-bottom: 8px; }
-  .pm-memo ul, .pm-memo ol { padding-left: 20px; margin-bottom: 8px; }
-  .pm-memo li { font-size: 12px; color: #cbd5e1; line-height: 1.7; }
-  .pm-memo code { background: #2d3148; padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 11px; }
-  .pm-memo pre { background: #2d3148; padding: 12px; border-radius: 6px; overflow-x: auto; margin-bottom: 8px; }
-  .pm-memo pre code { background: none; padding: 0; }
+  .pm-memo { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 32px; line-height: 1.6;}
+  .pm-memo h1 { font-size: 20px; margin-bottom: 16px; font-weight: 600;}
+  .pm-memo h2 { font-size: 16px; margin: 24px 0 12px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px;}
+  .pm-memo h3 { font-size: 14px; margin: 16px 0 8px; color: #f1f5f9; }
+  .pm-memo p  { font-size: 14px; color: #cbd5e1; margin-bottom: 12px; }
+  .pm-memo ul, .pm-memo ol { padding-left: 24px; margin-bottom: 12px; }
+  .pm-memo li { font-size: 14px; color: #cbd5e1; margin-bottom: 6px;}
+  .pm-memo code { background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; color: #e2e8f0;}
 
-  /* Story cards */
-  .story-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-  .story-card .story-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
-  .story-card .story-meta  { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
-  .story-card .ac-label    { font-size: 10px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin: 8px 0 4px; }
-  .story-card .ac-item     { font-size: 11px; color: #94a3b8; line-height: 1.6; margin-left: 12px; }
-  .story-card .ac-item::before { content: "✓  "; color: var(--green); }
-
-  /* Approval panel */
-  #approval-panel { border-top: 1px solid var(--border); background: var(--surface); padding: 16px 24px; }
-  #approval-panel .gate-label { font-size: 11px; font-weight: 700; color: var(--yellow); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
-  #approval-panel .row { display: flex; gap: 10px; align-items: flex-start; }
-  #approval-panel textarea { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 12px; color: var(--text); resize: none; height: 56px; font-family: inherit; }
-  #approval-panel textarea::placeholder { color: var(--muted); }
+  /* Approval panel (Fixed at bottom) */
+  #approval-panel { 
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-top: 1px solid rgba(245, 158, 11, 0.3); 
+    background: rgba(20, 23, 38, 0.95); 
+    backdrop-filter: blur(12px);
+    padding: 20px 32px; 
+    box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+    z-index: 100;
+  }
+  #approval-panel .gate-label { font-size: 12px; font-weight: 700; color: var(--yellow); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;}
+  .gate-label .pulsing-dot { width: 8px; height: 8px; background: var(--yellow); border-radius: 50%; opacity: 1; animation: pulse 1.5s infinite; }
+  #approval-panel .row { display: flex; gap: 16px; align-items: flex-start; }
+  #approval-panel textarea { 
+    flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text); resize: none; height: 60px; font-family: inherit; transition: border 0.2s;
+  }
   #approval-panel textarea:focus { outline: none; border-color: var(--accent); }
-  .btn { padding: 10px 20px; border: none; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; transition: opacity 0.15s; }
-  .btn:hover { opacity: 0.85; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-approve { background: var(--green); color: #000; }
-  .btn-reject  { background: var(--red);   color: #fff; }
-  .panel-success { color: var(--green); font-size: 13px; font-weight: 600; padding: 10px 0; }
-  .panel-error   { color: var(--red);   font-size: 12px; padding: 10px 0; }
+  .btn { padding: 0 24px; height: 60px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center;}
+  .btn:hover { transform: translateY(-2px); }
+  .btn-approve { background: var(--green); color: #000; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);}
+  .btn-reject  { background: var(--red); color: #fff; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);}
+  
+  /* Modal */
+  #modal-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 999;
+    align-items: center; justify-content: center;
+  }
+  .modal {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px; width: 600px; max-width: 90vw;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5); overflow: hidden;
+  }
+  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;}
+  .modal-header h3 { font-size: 18px; }
+  .close-btn { cursor: pointer; color: var(--muted); background: none; border: none; font-size: 20px;}
+  .modal-body { padding: 24px; }
+  .input-label { font-size: 13px; color: var(--muted); margin-bottom: 8px; display: block; font-weight: 500;}
+  .modal-input { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text); margin-bottom: 20px; font-family: inherit; font-size: 14px;}
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px;}
 
-  /* Empty state */
-  .no-selection { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); }
-  .no-selection svg { opacity: 0.2; margin-bottom: 12px; }
-  .no-selection p { font-size: 14px; }
-  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); } 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); } }
 </style>
 </head>
 <body>
 
-<!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
-<aside id="sidebar">
-  <div id="sidebar-header">
-    <h1>AgentSDLC <span id="pending-badge" style="display:none">0</span></h1>
-    <p>Human approval gates</p>
+<header>
+  <div class="logo">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    AgentSDLC <span>PM</span>
   </div>
-  <div id="feature-list">
-    <div style="padding:16px;color:var(--muted);font-size:12px">
-      <span class="spinner"></span>Loading…
-    </div>
-  </div>
-</aside>
+  <button class="new-btn" onclick="openNewModal()">+ New Idea</button>
+</header>
 
-<!-- ── Main panel ───────────────────────────────────────────────────────── -->
-<main id="main">
-  <div id="main-header" style="display:none">
-    <h2 id="feature-title">—</h2>
-    <div class="meta" id="feature-meta">—</div>
-  </div>
-  <div id="tabs" style="display:none"></div>
-  <div id="content">
-    <div class="no-selection">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-      </svg>
-      <p>Select a feature to review</p>
+<div id="app-body">
+  <!-- ── Sidebar ── -->
+  <aside id="sidebar">
+    <div class="mode-toggle">
+      <div class="mode-btn active" id="mode-ideas" onclick="setMode('ideas')">Ideas (Discovery)</div>
+      <div class="mode-btn" id="mode-features" onclick="setMode('features')">Execution</div>
+    </div>
+    <div id="feature-list">
+      <div style="padding:20px;text-align:center;color:var(--muted)">Loading...</div>
+    </div>
+  </aside>
+
+  <!-- ── Main panel ── -->
+  <main id="main">
+    <div id="main-header" style="display:none">
+      <h2 id="feature-title">—</h2>
+      <div class="meta" id="feature-meta">—</div>
+    </div>
+    <div id="tabs" style="display:none"></div>
+    <div id="content">
+      <div class="empty">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.2;margin-bottom:16px;">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        <p>Select an item to view insights and execution details.</p>
+      </div>
+    </div>
+    
+    <!-- Floating Approval Panel -->
+    <div id="approval-panel" style="display:none">
+      <div class="gate-label" id="gate-label"><span class="pulsing-dot"></span> Awaiting Approval</div>
+      <div class="row">
+        <textarea id="comment-box" placeholder="Feedback or rejection reason (required for rejection)..."></textarea>
+        <button class="btn btn-approve" id="btn-approve">Approve</button>
+        <button class="btn btn-reject"  id="btn-reject">Reject</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal -->
+<div id="modal-backdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Submit New Idea</h3>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <label class="input-label">Feature Title</label>
+      <input type="text" id="new-item-title" class="modal-input" placeholder="e.g. AI Synthesizer">
+      
+      <label class="input-label">Description or Customer Notes (Raw)</label>
+      <textarea id="new-item-desc" class="modal-input" style="height: 120px; resize: none;" placeholder="Paste customer feedback, meeting transcripts, or rough ideas here..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" style="background:transparent; color:var(--text); height:40px" onclick="closeModal()">Cancel</button>
+      <button class="new-btn" style="height:40px" onclick="triggerPipeline()">Run AI Discovery</button>
     </div>
   </div>
-  <div id="approval-panel" style="display:none">
-    <div class="gate-label" id="gate-label">⏸ Awaiting approval</div>
-    <div class="row">
-      <textarea id="comment-box" placeholder="Optional: add rejection reason / revision instructions…"></textarea>
-      <button class="btn btn-approve" id="btn-approve">✓ Approve</button>
-      <button class="btn btn-reject"  id="btn-reject">✗ Reject</button>
-    </div>
-    <div id="panel-msg"></div>
-  </div>
-</main>
+</div>
 
 <script>
-// ── State ──────────────────────────────────────────────────────────────────
-let features      = [];
+let currentMode   = 'ideas'; // 'ideas' | 'features'
+let listItems     = [];
 let pendingGates  = [];
 let selectedId    = null;
 let selectedStage = null;
-let featureData   = {};   // {manifest, stages}
-let pollTimer     = null;
+let itemData      = {};
 
 // ── API helpers ────────────────────────────────────────────────────────────
 async function api(path) {
   const res = await fetch(path);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
 }
-
 async function postJSON(path, body) {
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
 }
 
-// ── Poll loop (every 3s) ───────────────────────────────────────────────────
+// ── UI Logic ───────────────────────────────────────────────────────────────
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('mode-ideas').className = `mode-btn ${mode === 'ideas' ? 'active' : ''}`;
+  document.getElementById('mode-features').className = `mode-btn ${mode === 'features' ? 'active' : ''}`;
+  selectedId = null;
+  document.getElementById('main-header').style.display = 'none';
+  document.getElementById('tabs').style.display = 'none';
+  document.getElementById('content').innerHTML = '<div class="empty">Select an item from the sidebar to view details.</div>';
+  hideApprovalPanel();
+  poll();
+}
+
 async function poll() {
   try {
-    const [newFeatures, newPending] = await Promise.all([
-      api('/api/features'),
-      api('/api/pending'),
+    const [fetchedItems, newPending] = await Promise.all([
+      api(`/api/${currentMode}`),
+      api('/api/pending')
     ]);
-    features     = newFeatures;
+    listItems = fetchedItems;
     pendingGates = newPending;
     renderSidebar();
 
-    // If current selection now has a pending gate, show approval panel
     if (selectedId) {
       const gate = pendingGates.find(g => g.featureId === selectedId);
       if (gate) {
-        const gateStage = gate.stage;
-        if (gateStage !== selectedStage) {
-          selectedStage = gateStage;
+        if (gate.stage !== selectedStage && itemData?.manifest?.stages?.includes(gate.stage)) {
+          selectedStage = gate.stage;
           renderTabs();
           renderContent();
         }
@@ -199,99 +356,84 @@ async function poll() {
       }
     }
   } catch (e) {
-    console.warn('poll error', e.message);
+    console.warn('Poll failed:', e);
   }
 }
 
-// ── Sidebar ────────────────────────────────────────────────────────────────
 function renderSidebar() {
-  const pendingCount = pendingGates.length;
-  const badge = document.getElementById('pending-badge');
-  if (pendingCount > 0) {
-    badge.textContent = pendingCount;
-    badge.style.display = 'inline-block';
-  } else {
-    badge.style.display = 'none';
-  }
-
   const list = document.getElementById('feature-list');
-  if (!features.length) {
-    list.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:12px">No features yet. Run pipeline to start.</div>';
+  if (!listItems.length) {
+    list.innerHTML = `<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No ${currentMode} found.</div>`;
     return;
   }
-
-  list.innerHTML = features.map(f => {
+  list.innerHTML = listItems.map(f => {
     const hasPending = pendingGates.some(g => g.featureId === f.featureId);
-    const badgeClass = hasPending ? 'badge-pending'
-                     : f.status === 'done'      ? 'badge-done'
-                     : f.status === 'escalated' ? 'badge-escalated'
-                     : 'badge-running';
-    const badgeLabel = hasPending ? '⏸ pending' : f.status;
-    const started = new Date(f.startedAt).toLocaleString();
-    return `<div class="feature-item ${f.featureId === selectedId ? 'active' : ''}" onclick="selectFeature('${f.featureId}')">
+    let st = f.status || 'running';
+    if(hasPending) st = 'pending_gate';
+    const badgeClass = {
+      'pending_gate': 'badge-pending',
+      'done': 'badge-done',
+      'escalated': 'badge-escalated',
+      'running': 'badge-running'
+    }[st];
+    const lbl = hasPending ? 'Action Req' : st;
+    const date = new Date(f.startedAt).toLocaleDateString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    
+    return `<div class="feature-item ${f.featureId === selectedId ? 'active' : ''}" onclick="selectItem('${f.featureId}', '${f.storeType || currentMode}')">
       <div class="title">${esc(f.featureTitle)}</div>
-      <div class="meta">${started}</div>
-      <span class="stage-badge ${badgeClass}">${badgeLabel}</span>
+      <div class="meta">${date}</div>
+      <div class="badge ${badgeClass}">${lbl}</div>
     </div>`;
   }).join('');
 }
 
-// ── Select feature ─────────────────────────────────────────────────────────
-async function selectFeature(featureId) {
-  selectedId = featureId;
+async function selectItem(id, type) {
+  selectedId = id;
   selectedStage = null;
-  document.getElementById('content').innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><span class="spinner"></span> Loading…</div>';
+  document.getElementById('content').innerHTML = '<div class="empty">Loading...</div>';
   document.getElementById('main-header').style.display = '';
   document.getElementById('tabs').style.display = '';
   hideApprovalPanel();
+  renderSidebar();
 
   try {
-    featureData = await api(`/api/features/${featureId}`);
-    const m = featureData.manifest;
-
+    itemData = await api(`/api/${type}/${id}`);
+    const m = itemData.manifest;
     document.getElementById('feature-title').textContent = m.featureTitle;
-    document.getElementById('feature-meta').textContent  =
-      `Stage: ${m.currentStage} | Epic: ${m.jira?.epicKey ?? 'N/A'} | Started: ${new Date(m.startedAt).toLocaleString()}`;
-
-    // Pick a default tab: prefer pending gate stage, then last completed
-    const gate = pendingGates.find(g => g.featureId === featureId);
+    document.getElementById('feature-meta').textContent = 
+      `Status: ${m.status.toUpperCase()}  |  Requested By: ${m.requestedBy?.substring(0,12)}  |  Updated: ${new Date(m.updatedAt).toLocaleString()}`;
+    
+    const gate = pendingGates.find(g => g.featureId === id);
     selectedStage = gate?.stage ?? m.stages?.[m.stages.length - 1] ?? 'pm_brainstorm';
-
+    
     renderTabs();
     renderContent();
-    renderSidebar();
-
-    if (gate) showApprovalPanel(gate);
+    if(gate) showApprovalPanel(gate);
   } catch (e) {
-    document.getElementById('content').innerHTML = `<div class="empty">Error loading feature: ${esc(e.message)}</div>`;
+    document.getElementById('content').innerHTML = `<div class="empty" style="color:var(--red)">Failed to load data.</div>`;
   }
 }
 
-// ── Tabs ───────────────────────────────────────────────────────────────────
-const STAGE_LABELS = {
-  pm_brainstorm: 'PM Analysis',
-  po:            'PO Stories',
-  design:        'Design',
-  architect:     'Architecture',
-  dev_swarm:     'Development',
-  nfr:           'NFR Review',
-  review:        'Code Review',
-  cicd:          'CI/CD',
-  qa:            'QA Results',
+const TAB_NAMES = {
+  pm_brainstorm: 'AI Synthesis',
+  po: 'Engineering Sync',
+  design: 'UI Design',
+  architect: 'Architecture',
+  dev_swarm: 'Code Implementation',
+  review: 'Pull Request',
+  cicd: 'Deployment',
+  qa: 'QA Testing'
 };
 
 function renderTabs() {
-  const m      = featureData.manifest;
+  const m = itemData.manifest;
   const stages = m?.stages ?? [];
-  const gate   = pendingGates.find(g => g.featureId === selectedId);
-
-  const tabs = document.getElementById('tabs');
-  tabs.innerHTML = stages.map(s => {
-    const label   = STAGE_LABELS[s] ?? s;
-    const pending = gate?.stage === s;
-    return `<div class="tab ${s === selectedStage ? 'active' : ''}" onclick="selectTab('${s}')">
-      ${label}${pending ? '<span class="dot"></span>' : ''}
-    </div>`;
+  const gate = pendingGates.find(g => g.featureId === selectedId);
+  
+  document.getElementById('tabs').innerHTML = stages.map(s => {
+    const active = s === selectedStage ? 'active' : '';
+    const pending = gate?.stage === s ? '<span class="dot"></span>' : '';
+    return `<div class="tab ${active}" onclick="selectTab('${s}')">${TAB_NAMES[s] || s}${pending}</div>`;
   }).join('');
 }
 
@@ -301,189 +443,81 @@ function selectTab(stage) {
   renderContent();
 }
 
-// ── Content rendering ──────────────────────────────────────────────────────
 function renderContent() {
-  const area = document.getElementById('content');
-  if (!selectedStage || !featureData.stages) {
-    area.innerHTML = '<div class="empty">No data yet for this stage.</div>';
-    return;
-  }
+  const c = document.getElementById('content');
+  if(!selectedStage || !itemData.stages) return c.innerHTML = '<div class="empty">No stage data.</div>';
+  const stageData = itemData.stages[selectedStage]?.data ?? itemData.stages[selectedStage];
+  if(!stageData) return c.innerHTML = '<div class="empty">Data pending format processing...</div>';
 
-  const raw = featureData.stages[selectedStage];
-  if (!raw) {
-    area.innerHTML = '<div class="empty">Stage data not available.</div>';
-    return;
-  }
-
-  const stage = selectedStage;
-  const data  = raw.data?.content ?? raw.data ?? raw;
-
-  if (stage === 'pm_brainstorm') {
-    area.innerHTML = renderPMBrainstorm(data);
-  } else if (stage === 'po') {
-    area.innerHTML = renderPOStories(data);
-  } else if (stage === 'design') {
-    area.innerHTML = renderDesign(data);
-  } else if (stage === 'qa') {
-    area.innerHTML = renderQA(data);
+  if(selectedStage === 'pm_brainstorm') {
+    const memo = stageData.pm_memo || stageData.consensus?.pm_memo || '';
+    const md = memo ? marked.parse(memo) : '<p>No PM memo found.</p>';
+    c.innerHTML = `<div class="pm-memo">${md}</div>
+      <div class="card" style="margin-top:20px">
+        <h3>Decision Consensus</h3>
+        <p><strong>Action:</strong> ${esc(stageData.consensus?.build_decision)}</p>
+        <p><strong>Confidence:</strong> ${esc(stageData.consensus?.confidence)}</p>
+      </div>`;
   } else {
-    area.innerHTML = renderGeneric(stage, data);
+    // Fallback JSON renderer
+    c.innerHTML = `<div class="card"><h3>${TAB_NAMES[selectedStage] || selectedStage} JSON</h3>
+      <pre style="font-size:12px;color:var(--muted);white-space:pre-wrap">${esc(JSON.stringify(stageData, null, 2))}</pre>
+    </div>`;
   }
 }
 
-function renderPMBrainstorm(data) {
-  const memo = data?.pm_memo ?? data?.consensus?.pm_memo ?? '';
-  const consensus = data?.consensus ?? {};
-  const rounds = data?.brainstorm_rounds ?? [];
-
-  return `
-    <div class="card">
-      <h3>Consensus</h3>
-      <p><strong>Decision:</strong> ${esc(consensus.build_decision ?? 'N/A')}</p>
-      <p><strong>Confidence:</strong> ${esc(String(consensus.confidence ?? 'N/A'))}</p>
-      <p><strong>Scope:</strong> ${esc(consensus.agreed_scope ?? 'N/A')}</p>
-    </div>
-    ${rounds.length ? `<div class="card"><h3>Brainstorm Rounds (${rounds.length})</h3>
-      ${rounds.map((r,i) => `<p><strong>Round ${i+1}:</strong> ${esc(r.agent ?? '')} — ${esc(r.contribution?.slice(0,200) ?? '')}</p>`).join('')}
-    </div>` : ''}
-    ${memo ? `<div class="pm-memo"><h2>PM Analysis Memo</h2>${marked.parse(memo)}</div>` : ''}
-  `;
-}
-
-function renderPOStories(data) {
-  const stories = data?.user_stories ?? [];
-  const epic    = data?.epic_key ?? 'N/A';
-  const jiraUrl = data?.story_map_url ?? '#';
-
-  return `
-    <div class="card">
-      <h3>Epic</h3>
-      <p><strong>Key:</strong> <a href="${esc(jiraUrl)}" target="_blank" style="color:var(--accent)">${esc(epic)}</a></p>
-      <p><strong>Summary:</strong> ${esc(data?.epic_summary ?? 'N/A')}</p>
-      <p><strong>Stories:</strong> ${stories.length}</p>
-    </div>
-    ${stories.map((s, i) => `
-      <div class="story-card">
-        <div class="story-title">${i+1}. ${esc(s.summary)}</div>
-        <div class="story-meta">${esc(s.job_story ?? '')} | ${s.story_points ?? '?'} pts | Key: ${esc(s.key ?? 'N/A')}</div>
-        <div class="ac-label">Acceptance Criteria</div>
-        ${(s.acceptance_criteria ?? []).map(ac => `<div class="ac-item">${esc(ac)}</div>`).join('')}
-        ${(s.test_scenarios ?? []).length ? `
-          <div class="ac-label" style="color:var(--yellow)">Test Scenarios</div>
-          ${(s.test_scenarios ?? []).map(ts => `<div class="ac-item" style="color:#94a3b8">${esc(ts)}</div>`).join('')}
-        ` : ''}
-      </div>
-    `).join('')}
-  `;
-}
-
-function renderDesign(data) {
-  const figmaKey = data?.figma_file_key ?? 'N/A';
-  const frames   = data?.frame_urls ?? [];
-  const summary  = data?.summary ?? '';
-
-  return `
-    <div class="card">
-      <h3>Design Output</h3>
-      <p><strong>Figma file:</strong> ${esc(figmaKey)}</p>
-      ${summary ? `<p><strong>Summary:</strong> ${esc(summary)}</p>` : ''}
-    </div>
-    ${frames.length ? `<div class="card"><h3>Frames (${frames.length})</h3>
-      <ul>${frames.map(f => `<li><a href="${esc(f)}" target="_blank" style="color:var(--accent)">${esc(f)}</a></li>`).join('')}</ul>
-    </div>` : ''}
-  `;
-}
-
-function renderQA(data) {
-  const rate   = data?.pass_rate != null ? (data.pass_rate * 100).toFixed(0) + '%' : 'N/A';
-  const passed = data?.passed ?? 0;
-  const failed = data?.failed ?? 0;
-  const tests  = data?.test_cases ?? [];
-
-  return `
-    <div class="card">
-      <h3>QA Results</h3>
-      <p><strong>Pass rate:</strong> <span style="color:${data?.pass_rate>=0.8?'var(--green)':'var(--red)'}">${rate}</span></p>
-      <p><strong>Passed:</strong> ${passed} &nbsp; <strong>Failed:</strong> ${failed}</p>
-    </div>
-    ${tests.length ? `<div class="card"><h3>Test Cases</h3>
-      ${tests.map(t => `<p style="color:${t.status==='pass'?'var(--green)':'var(--red)'}">
-        ${t.status === 'pass' ? '✓' : '✗'} ${esc(t.id)} — ${esc(t.name ?? '')}
-        ${t.error_message ? `<br><small style="color:var(--muted)">${esc(t.error_message)}</small>` : ''}
-      </p>`).join('')}
-    </div>` : ''}
-  `;
-}
-
-function renderGeneric(stage, data) {
-  return `<div class="card"><h3>${STAGE_LABELS[stage] ?? stage}</h3>
-    <pre style="font-size:11px;overflow:auto;white-space:pre-wrap;color:#94a3b8">${esc(JSON.stringify(data, null, 2))}</pre>
-  </div>`;
-}
-
-// ── Approval panel ─────────────────────────────────────────────────────────
 function showApprovalPanel(gate) {
-  const panel = document.getElementById('approval-panel');
-  panel.style.display = '';
-  document.getElementById('gate-label').textContent =
-    `⏸ ${gate.stageLabel ?? gate.stage} — ${gate.summary ?? 'Review and approve to continue'}`;
-  document.getElementById('panel-msg').textContent = '';
+  document.getElementById('approval-panel').style.display = 'block';
+  document.getElementById('gate-label').innerHTML = `<span class="pulsing-dot"></span> HUMAN GATE: ${esc(gate.summary || gate.stage)}`;
   document.getElementById('btn-approve').disabled = false;
-  document.getElementById('btn-reject').disabled  = false;
+  document.getElementById('btn-reject').disabled = false;
+  document.getElementById('comment-box').value = '';
 }
-
 function hideApprovalPanel() {
   document.getElementById('approval-panel').style.display = 'none';
 }
 
-document.getElementById('btn-approve').addEventListener('click', () => submitApproval(true));
-document.getElementById('btn-reject').addEventListener('click',  () => submitApproval(false));
-
 async function submitApproval(approved) {
   const gate = pendingGates.find(g => g.featureId === selectedId);
-  if (!gate) return;
   const comment = document.getElementById('comment-box').value.trim();
-  if (!approved && !comment) {
-    document.getElementById('panel-msg').innerHTML = '<div class="panel-error">Please add a rejection reason before rejecting.</div>';
-    return;
-  }
-
+  if(!approved && !comment) return alert('Rejection requires a comment for the AI to amend context.');
+  
   document.getElementById('btn-approve').disabled = true;
-  document.getElementById('btn-reject').disabled  = true;
-  document.getElementById('panel-msg').innerHTML  = '<span class="spinner"></span> Saving…';
-
+  document.getElementById('btn-reject').disabled = true;
+  
   try {
     await postJSON('/api/approve', {
-      featureId:  selectedId,
-      stage:      gate.stage,
+      featureId: selectedId,
+      type: currentMode,
+      stage: gate.stage,
       approved,
-      comment,
-      approvedBy: 'human',
+      comment
     });
-    document.getElementById('panel-msg').innerHTML =
-      `<div class="panel-success">${approved ? '✓ Approved' : '✗ Rejected'} — pipeline will continue…</div>`;
-    document.getElementById('comment-box').value = '';
-    // Refresh immediately
-    await poll();
-  } catch (e) {
-    document.getElementById('panel-msg').innerHTML =
-      `<div class="panel-error">Error: ${esc(e.message)}</div>`;
-    document.getElementById('btn-approve').disabled = false;
-    document.getElementById('btn-reject').disabled  = false;
+    hideApprovalPanel();
+    poll();
+  } catch(e) {
+    alert("Error: "+e.message);
   }
 }
 
-// ── Utilities ──────────────────────────────────────────────────────────────
-function esc(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+// ── Modal ──
+function openNewModal() { document.getElementById('modal-backdrop').style.display = 'flex'; }
+function closeModal()   { document.getElementById('modal-backdrop').style.display = 'none'; }
+function triggerPipeline() {
+  // In a real app, this posts to a /api/trigger endpoint which spawns process
+  // Because backend run.ts reads argv, we could add a spawn wrap.
+  // For now, modal is purely visual as we use CLI to start, but we can fake an alert:
+  alert("Normally this would POST to spawn pipeline child process. Please use CLI `npm run pipeline:idea` with this text.");
+  closeModal();
 }
 
-// ── Boot ───────────────────────────────────────────────────────────────────
+function esc(s) {
+  if(!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+setInterval(poll, 3000);
 poll();
-pollTimer = setInterval(poll, 3000);
 </script>
 </body>
 </html>

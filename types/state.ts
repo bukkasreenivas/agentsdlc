@@ -10,12 +10,14 @@
 
 export type StageId =
   | "pm_brainstorm"
+  | "pm_promote"
   | "po"
   | "design"
   | "architect"
   | "dev_swarm"
   | "nfr"
   | "review"
+  | "code_pr"
   | "cicd"
   | "qa"
   | "done"
@@ -186,6 +188,7 @@ export interface PipelineState {
   repo_path: string;
   requested_by: string;
   created_at: string;
+  pipeline_mode: "idea" | "feature";
 
   // Graph navigation
   current_stage: StageId;

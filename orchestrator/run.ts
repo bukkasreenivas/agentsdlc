@@ -10,20 +10,21 @@ import * as fs     from "fs";
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 import { randomUUID }      from "crypto";
-import { providerSummary, getHostProjectPath } from "../config/llm-client";
+import { providerSummary } from "../config/llm-client";
 import { ensureProjectOverview }               from "../scripts/init-project";
 import {
   syncFromPipelineState,
   writeManifest,
   commitToGit,
 }                                              from "./feature-store";
+import { syncWorkspace } from "./workspace";
 
 const args = process.argv.slice(2);
 const get  = (flag: string) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : undefined; };
 const has  = (flag: string) => args.includes(flag);
 const mode = args[0];
 
-const hostPath = get("--repo") ?? getHostProjectPath();
+const hostPath = get("--repo") ?? syncWorkspace();
 
 // ── Persistent state helpers ──────────────────────────────────────────────────
 // State is saved to disk after every node so --resume works across process

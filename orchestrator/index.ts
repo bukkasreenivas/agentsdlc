@@ -221,12 +221,14 @@ export async function openHumanGatePR(opts: GateOptions): Promise<{ pr_url: stri
 
 const SOD_ROLES: Record<StageId, "maker" | "checker" | "executor" | null> = {
   pm_brainstorm: "maker",
+  pm_promote:    null,
   po:            "maker",
   design:        "maker",
   architect:     "maker",
   dev_swarm:     "maker",
   nfr:           "checker",
   review:        "checker",
+  code_pr:       null,
   cicd:          "executor",
   qa:            "executor",
   done:          null,

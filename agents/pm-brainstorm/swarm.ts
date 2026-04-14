@@ -1,6 +1,8 @@
 // agents/pm-brainstorm/swarm.ts  — v3: grounded in real codebase
 // Agents read actual project files (README, entry points, routers, models)
 // before analysing the feature so they never hallucinate a different product.
+import * as fs from "fs";
+import * as path from "path";
 import { resolveModel, withFailover } from "../../config/llm-client";
 import { AGENT_MODELS }   from "../../config/agents";
 import { scanCodebase }   from "../../tools/codebase-scanner";
@@ -84,14 +86,24 @@ function buildCodeContext(codeCtx: Awaited<ReturnType<typeof scanCodebase>>): st
 
 async function runBrainstormAgent(
   agent: typeof PM_AGENTS[0],
-  feature: string,
+  state: PipelineState,
   codeContext: string,
-  previousRounds: BrainstormRound[]
+  previousRounds: BrainstormRound[],
+  strategyContext: string
 ): Promise<BrainstormRound> {
   const cfg = AGENT_MODELS[agent.model_key];
   const previousContext = previousRounds.length > 0
     ? `\n\nPrevious perspectives:\n${previousRounds.map(r => `${r.agent_id}: fit_score=${r.fit_score}, concern: ${r.arguments_against[0] ?? "none"}`).join("\n")}\nRespond to these in your analysis.`
     : "";
+
+  const modeContext = state.pipeline_mode === "idea"
+    ? `\n\nPIPELINE MODE: IDEA PIPELINE (Discovery & Strategy)
+Focus: Synthesizing raw customer feedback into a pristine opportunity. 
+Required PM Tools: Discovery, JTBD, Opportunity Solution Tree, Competitor Analysis, Problem Solving.
+Use the Competitor Strategy provided below to align this idea.`
+    : `\n\nPIPELINE MODE: FEATURE EXECUTION
+Focus: Validating a confirmed requirement before handing off to PO for engineering.
+Required PM Tools: Lean Canvas, RICE Prioritization, Assumption Mapping, Pre-mortems.`;
 
   const raw = await withFailover(async (client) => {
     const response = await client.messages.create({
@@ -101,7 +113,11 @@ async function runBrainstormAgent(
       messages:   [{
         role: "user",
         content: `You are adding this feature to the EXISTING product shown below.
-Feature request: ${feature}
+Feature request: ${state.feature_description}
+${modeContext}
+
+=== GLOBAL STRATEGY & COMPETITORS ===
+${strategyContext}
 
 EXISTING CODEBASE CONTEXT (read carefully before analysing):
 ${codeContext}
@@ -182,6 +198,18 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
   const codeCtx     = await scanCodebase(repo_path, keywords);
   const codeContext = buildCodeContext(codeCtx);
 
+  // Load Strategy Context
+  const strategyDir = path.join(__dirname, "../../../memory/strategy");
+  let strategyContext = "";
+  if (fs.existsSync(path.join(strategyDir, "project_context.md"))) {
+    strategyContext += fs.readFileSync(path.join(strategyDir, "project_context.md"), "utf8");
+  } else {
+    strategyContext += "No global strategy file found. Please run Strategy Sync.";
+  }
+  if (fs.existsSync(path.join(strategyDir, "competitor_analysis.md"))) {
+    strategyContext += "\n\n=== COMPETITOR STRATEGY ===\n" + fs.readFileSync(path.join(strategyDir, "competitor_analysis.md"), "utf8");
+  }
+
   console.log(`  [PM] Codebase: ${codeCtx.techStack.join(", ")}`);
   console.log(`  [PM] Key files read: ${codeCtx.keyFileExcerpts.map(f => f.path).join(", ")}`);
   console.log(`  [PM] API routes found: ${codeCtx.apiRoutes.length}`);
@@ -189,7 +217,7 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
   const rounds: BrainstormRound[] = [];
   for (const agent of PM_AGENTS) {
     console.log(`  [PM] Running ${agent.label}...`);
-    const round = await runBrainstormAgent(agent, feature_description, codeContext, rounds);
+    const round = await runBrainstormAgent(agent, state, codeContext, rounds, strategyContext);
     rounds.push(round);
   }
 
