@@ -240,25 +240,33 @@ async function handleRequest(
       badRequest(res, "Required: title or description"); return;
     }
 
-    // Join with plain ASCII separator; strip any double-quotes to avoid shell breakage
-    const featureText = [title, description].filter(Boolean).join(" - ").replace(/"/g, "'");
+    const featureText = [title, description].filter(Boolean).join(" - ");
     const agentsdlcDir = path.resolve(__dirname, "..");
 
     // Log file — written next to the existing pipeline log
     const logDir  = path.join(agentsdlcDir, "memory", "runtime");
     fs.mkdirSync(logDir, { recursive: true });
     const logFile = path.join(logDir, `pipeline-${Date.now()}.log`);
-    const logFd   = fs.openSync(logFile, "a");
+    fs.writeFileSync(logFile, ""); // ensure file exists before child opens it
+    const logFd = fs.openSync(logFile, "a");
 
-    // Build a single command string so Windows cmd.exe quotes the feature text correctly
-    const cmd = `npx ts-node orchestrator/run.ts --feature "${featureText}"`;
-    const child = spawn(cmd, [], {
-      cwd:      agentsdlcDir,
-      detached: true,
-      stdio:    ["ignore", logFd, logFd],
-      env:      { ...process.env },
-      shell:    true,
-    });
+    // Use process.execPath (absolute node binary) + ts-node/register so we can
+    // use shell:false — this makes stdio fd inheritance reliable on Windows.
+    const child = spawn(
+      process.execPath,
+      [
+        "-r", "ts-node/register",
+        path.join(agentsdlcDir, "orchestrator", "run.ts"),
+        "--feature", featureText,
+      ],
+      {
+        cwd:      agentsdlcDir,
+        detached: true,
+        stdio:    ["ignore", logFd, logFd],
+        env:      { ...process.env, TS_NODE_PROJECT: path.join(agentsdlcDir, "tsconfig.json") },
+        shell:    false,
+      }
+    );
     child.unref();
     fs.closeSync(logFd);
 
