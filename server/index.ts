@@ -30,6 +30,7 @@ import {
   commitToGit,
   ApprovalRecord,
   featureDir,
+  deleteFeature,
 } from "../orchestrator/feature-store";
 
 // ── Singleton server state ───────────────────────────────────────────────────
@@ -164,7 +165,6 @@ async function handleRequest(
   const deleteMatch = pathname.match(/^\/api\/ideas\/([^/]+)$/);
   if (method === "DELETE" && deleteMatch) {
     const itemId = deleteMatch[1];
-    const { deleteFeature } = await import("../orchestrator/feature-store");
     deleteFeature(itemId, "ideas");
     json(res, { ok: true });
     return;
@@ -408,7 +408,7 @@ async function handleRequest(
     child.unref();
     fs.closeSync(logFd);
     
-    json(res, { ok: true, message: "Pipeline resumed.", logFile: path.basename(logFile) });
+    json(res, { ok: true, message: "Feedback sent. PM is regenerating PRD.", logFile: path.basename(logFile) });
     return;
   }
 
@@ -419,29 +419,36 @@ async function handleRequest(
     const { featureId, message, stage = "pm_brainstorm" } = body;
     if (!featureId || !message) { badRequest(res, "Required: featureId, message"); return; }
 
+    const agentsdlcDir = path.resolve(__dirname, "..");
+
+    // 0. Detect storage type (check ideas folder first)
+    let type: "ideas" | "features" = "features";
+    if (fs.existsSync(path.join(agentsdlcDir, "memory", "ideas", featureId))) {
+      type = "ideas";
+    }
+
     // 1. Persist the chat message into the stage memory
-    // So the agent reads it on the next loop
-    const type = pathname.includes('ideas') ? 'ideas' : 'features';
-    const sData: any = readStageData(featureId, stage, type as any) || { chat_history: [] };
+    const sData: any = readStageData(featureId, stage, type) || { chat_history: [] };
     if (!sData.chat_history) sData.chat_history = [];
     sData.chat_history.push({ role: 'user', text: message, timestamp: new Date().toISOString() });
-    writeStageData(featureId, stage, sData, type as any);
+    writeStageData(featureId, stage, sData, type);
 
     // 2. Trigger a resume run
-    const agentsdlcDir = path.resolve(__dirname, "..");
     const logDir  = path.join(agentsdlcDir, "memory", "runtime");
     const logFile = path.join(logDir, `chat-${featureId.slice(0,8)}-${Date.now()}.log`);
     fs.mkdirSync(logDir, { recursive: true });
     fs.writeFileSync(logFile, "");
     const logFd = fs.openSync(logFile, "a");
 
+    const mode = type === "ideas" ? "idea" : "feature";
     const child = spawn(
       process.execPath,
       [
         "-r", "ts-node/register",
         path.join(agentsdlcDir, "orchestrator", "run.ts"),
         "--resume",
-        "--id", featureId,
+        "--id",   featureId,
+        "--mode", mode,
       ],
       {
         cwd:      agentsdlcDir,
