@@ -891,22 +891,22 @@ function renderContent() {
   const c = document.getElementById('content');
   if(!selectedStage || !itemData.stages) return c.innerHTML = '<div class="empty">No stage data.</div>';
   const stageData = (itemData.stages[selectedStage]?.content ?? itemData.stages[selectedStage]?.data ?? itemData.stages[selectedStage]);
-  if(!stageData) return c.innerHTML = '<div class="empty">Stage output in progress...</div>';
 
   if(selectedStage === 'pm_brainstorm') {
-    const memo = stageData.pm_memo || stageData.consensus?.pm_memo || '';
-    const md = memo ? marked.parse(memo) : '<p>No Product Requirements Document generated yet.</p>';
+    const memo = stageData?.pm_memo || stageData?.consensus?.pm_memo || '';
+    const md = memo ? marked.parse(memo) : '<p style="color:var(--text-muted); font-style:italic">The agents are currently mapping the codebase and analyzing your request. You can provide additional guidance or feedback below while they work.</p>';
     c.innerHTML = `
+      ${stageData ? `
       <div class="card" style="margin-bottom: 24px; display: flex; justify-content: space-between;">
         <div>
           <h3 style="color:var(--text-muted); font-size:12px; text-transform:uppercase; margin-bottom:4px">Decision</h3>
-          <div style="font-size:18px; font-weight:600; color:var(--accent)">${esc(stageData.consensus?.build_decision).toUpperCase()}</div>
+          <div style="font-size:18px; font-weight:600; color:var(--accent)">${esc(stageData.consensus?.build_decision || 'Analyzing...').toUpperCase()}</div>
         </div>
         <div>
           <h3 style="color:var(--text-muted); font-size:12px; text-transform:uppercase; margin-bottom:4px">Confidence</h3>
-          <div style="font-size:18px; font-weight:600; color:var(--accent)">${esc(stageData.consensus?.confidence * 100)}%</div>
+          <div style="font-size:18px; font-weight:600; color:var(--accent)">${esc((stageData.consensus?.confidence || 0) * 100)}%</div>
         </div>
-      </div>
+      </div>` : ''}
       <div class="card markdown-body" style="margin-bottom: 24px;">${md}</div>
       
       <!-- Interactive Chat Brainstorm -->
@@ -916,8 +916,8 @@ function renderContent() {
           Brainstorm with PM Agent
         </h3>
         <div id="chat-history" style="font-size:13px; margin-bottom:16px; border-left: 2px solid var(--border); padding-left:12px; max-height: 200px; overflow-y: auto;">
-            ${(stageData.chat_history || []).map(m => `<div style="margin-bottom:8px"><strong>${m.role === 'user' ? 'You' : 'PM'}:</strong> ${esc(m.text)}</div>`).join('')}
-            ${(!stageData.chat_history?.length) ? '<div style="color:var(--text-muted)">Need changes? Suggest them here and the PM will regenerate the PRD.</div>' : ''}
+            ${(stageData?.chat_history || []).map(m => `<div style="margin-bottom:8px"><strong>${m.role === 'user' ? 'You' : 'PM'}:</strong> ${esc(m.text)}</div>`).join('')}
+            ${(!stageData?.chat_history?.length) ? '<div style="color:var(--text-muted)">Need changes? Suggest them here and the PM will regenerate the PRD.</div>' : ''}
         </div>
         <div style="display:flex; gap:12px">
           <input type="text" id="chat-input" placeholder="e.g. Add a dashboard for ROI analytics..." style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:10px; color:white; outline:none">
@@ -925,6 +925,10 @@ function renderContent() {
         </div>
       </div>
     `;
+    return;
+  }
+
+  if(!stageData) return c.innerHTML = '<div class="empty">Stage output in progress...</div>';
   } else if (selectedStage === 'po') {
      const content = stageData.content ?? stageData;
      const stories = content.user_stories || [];
