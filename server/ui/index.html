@@ -232,9 +232,9 @@
 
   /* Floating Approval Panel */
   #approval-panel { 
-    position: absolute; bottom: 0; left: 0; right: 0; 
-    border-top: 1px solid var(--border); 
-    background: var(--header-bg); backdrop-filter: blur(16px);
+    position: fixed; bottom: 0; left: 280px; right: 0; 
+    border-top: 2px solid var(--yellow); 
+    background: var(--header-bg); backdrop-filter: blur(24px);
     padding: 20px 32px; box-shadow: 0 -10px 30px rgba(0,0,0,0.05); z-index: 100;
   }
   [data-theme="dark"] #approval-panel { box-shadow: 0 -10px 30px rgba(0,0,0,0.4); border-top-color: rgba(245, 158, 11, 0.3); }
@@ -890,7 +890,14 @@ function selectTab(stage) {
 function renderContent() {
   const c = document.getElementById('content');
   if(!selectedStage || !itemData.stages) return c.innerHTML = '<div class="empty">No stage data.</div>';
-  const stageData = (itemData.stages[selectedStage]?.content ?? itemData.stages[selectedStage]?.data ?? itemData.stages[selectedStage]);
+  
+  // Robust unwrapping: some stages save as {stage, data: {content}}, others directly
+  let raw = itemData.stages[selectedStage];
+  let stageData = raw?.data?.content ?? raw?.content ?? raw?.data ?? raw;
+  
+  // Secondary check for deeply nested "data" (sometimes happens with retries)
+  if (stageData?.data) stageData = stageData.data;
+  if (stageData?.content) stageData = stageData.content;
 
   if(selectedStage === 'pm_brainstorm') {
     const memo = stageData?.pm_memo || stageData?.consensus?.pm_memo || '';
