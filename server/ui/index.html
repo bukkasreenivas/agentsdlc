@@ -715,6 +715,8 @@ async function refreshLog() {
     
     // Parse the log into pretty lines
     const lines = text.split('\n').filter(l => l.trim());
+    const isAtBottom = body.scrollHeight - body.scrollTop <= body.clientHeight + 50;
+
     body.innerHTML = lines.map(l => {
         let cls = 'log-line';
         let content = esc(l);
@@ -724,7 +726,10 @@ async function refreshLog() {
         }
         return `<div class="${cls}">${content}</div>`;
     }).join('');
-    body.scrollTop = body.scrollHeight;
+
+    if (isAtBottom) {
+        body.scrollTop = body.scrollHeight;
+    }
   } catch(e) {}
 }
 

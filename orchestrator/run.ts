@@ -85,29 +85,38 @@ function listCheckpoints(): CheckpointMeta[] {
 // ── Feature pipeline ──────────────────────────────────────────────────────────
 
 async function runFeaturePipeline() {
-  const feature  = get("--feature") ?? "New feature";
-  const maxRetry = parseInt(get("--max-retries") ?? "3", 10);
-  const resume   = has("--resume");
+  let feature     = get("--feature") || "";
+  let description = get("--desc") || "";
+  const maxRetry  = parseInt(get("--max-retries") ?? "3", 10);
+  const resume    = has("--resume");
 
   let featureId  = randomUUID();
   let savedState: any = null;
 
   if (resume) {
+    const { readManifest } = await import("./feature-store");
     const specificId = get("--id");
-    const meta = specificId ? { featureId: specificId, featureTitle: "Resuming..." } : loadLatestMeta();
+    const meta = specificId ? { featureId: specificId } : loadLatestMeta();
+    
     if (meta) {
-      featureId  = meta.featureId as `${string}-${string}-${string}-${string}-${string}`;
+      featureId = meta.featureId as `${string}-${string}-${string}-${string}-${string}`;
+      const manifest = readManifest(featureId, modeArg === "idea" ? "ideas" : "features");
+      if (manifest) {
+          feature = manifest.featureTitle;
+          // Note: description isn't in manifest conventionally, but savedState has it
+      }
       savedState = loadState(featureId);
+      if (savedState) description = savedState.feature_description || description;
+
       const completedStages = savedState
         ? Object.keys(savedState.deliverables ?? {})
             .filter((k: string) => savedState.deliverables[k]?.validated)
         : [];
 
       console.log(`\n ↩  Resuming pipeline`);
-      console.log(`    Feature:   ${meta.featureTitle}`);
+      console.log(`    Feature:   ${feature}`);
       console.log(`    ID:        ${featureId}`);
       console.log(`    Completed: ${completedStages.join(", ") || "none"}`);
-      if (meta.stage) console.log(`    Last stage: ${meta.stage}`);
       console.log();
     } else {
       console.log("\n  No checkpoint found — starting fresh.\n");

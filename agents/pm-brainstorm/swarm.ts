@@ -13,10 +13,12 @@ import type { PipelineState, BrainstormRound, PMBrainstormDeliverable } from "..
 
 const PM_AGENTS = [
   { id:"visionary",   label:"Visionary PM",    model_key:"pm_brainstorm", skills:["/strategy","/north-star","OST"],
-    system:`You are a Visionary PM analysing a NEW FEATURE for an EXISTING product.
-CRITICAL: You must ground every point in the ACTUAL codebase shown. Do NOT invent a different product.
-Apply: Opportunity Solution Tree (Teresa Torres), North Star Impact, Product Strategy Fit.
-Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"2-3 sentences grounded in the real codebase","ost_opportunity":"string","north_star_impact":"string","pm_skills_used":["string"]}` },
+    system:`You are a Discovery PM identifying implementation needs for an EXISTING product.
+CRITICAL: Map the new feature to the ACTUAL codebase.
+1. Identify all EXISTING components, routes, and modules that must change.
+2. Propose a high-level integration plan.
+3. Apply: Opportunity Solution Tree & Product Strategy Fit.
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Integration strategy grounded in real files","ost_opportunity":"string","north_star_impact":"string","pm_skills_used":["string"]}` },
   { id:"critic",      label:"Critic PM",       model_key:"pm_critic",     skills:["/pre-mortem","Tigers/Elephants","identify-assumptions"],
     system:`You are a Devil's Advocate PM analysing a NEW FEATURE for an EXISTING product.
 CRITICAL: You must ground every risk in the ACTUAL codebase shown. Do NOT invent a different product.
@@ -236,6 +238,13 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
       console.log(`  [PM] Read ${extracted.length} supplementary data files.`);
   }
 
+  // DISCOVERY PHASE: Log the implementation footprint
+  console.log(`  [PM] Discovery: Mapping feature to existing architecture...`);
+  console.log(`  [PM] Identity: ${codeCtx.projectIdentity.substring(0, 100)}...`);
+  if (codeCtx.apiRoutes.length > 0) {
+      console.log(`  [PM] Potential Footprint: Affects up to ${codeCtx.apiRoutes.length} endpoints.`);
+  }
+
   const rounds: BrainstormRound[] = [];
   for (const agent of PM_AGENTS) {
     console.log(`  [PM] Running ${agent.label}...`);
@@ -264,6 +273,12 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
   console.log(`  [PM] Running synthesizer...`);
   const existingDeliverable = state.deliverables?.pm_brainstorm?.content as PMBrainstormDeliverable;
   const chatHistory = existingDeliverable?.chat_history || [];
+  
+  if (chatHistory.length > 0) {
+      console.log(`  [PM] Received ${chatHistory.length} chat messages from user.`);
+      const lastMsg = chatHistory[chatHistory.length - 1];
+      console.log(`  [PM] Applying Feedback: "${lastMsg.text.substring(0, 50)}..."`);
+  }
   
   const { consensus, pm_memo } = await runSynthesizer(feature_description, rounds, codeContext, supplementaryData, chatHistory);
   console.log(`  [PM] Synthesis Complete!`);
