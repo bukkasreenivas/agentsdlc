@@ -4,34 +4,37 @@
   "private": true,
   "description": "AgentSDLC — self-contained multi-agent SDLC pipeline. Lives in .agentsdlc/",
   "scripts": {
-    "project:init":     "ts-node scripts/init-project.ts",
-    "project:reinit":   "ts-node scripts/init-project.ts --force",
-    "pipeline":         "ts-node orchestrator/run.ts",
+    "project:init": "ts-node scripts/init-project.ts",
+    "project:reinit": "ts-node scripts/init-project.ts --force",
+    "pipeline": "ts-node orchestrator/run.ts",
     "pipeline:feature": "ts-node orchestrator/run.ts --feature",
-    "pipeline:bug":     "ts-node orchestrator/run.ts bug --summary",
-    "bug:from-jira":    "ts-node orchestrator/run.ts bug --jira",
-    "provider:check":   "ts-node -e \"require('dotenv/config');const {providerSummary}=require('./config/llm-client');console.log(providerSummary())\"",
-    "upgrade":          "node scripts/upgrade.js --zip",
-    "upgrade:dry-run":  "node scripts/upgrade.js --zip",
-    "remove":           "node scripts/remove.js",
-    "typecheck":        "tsc --noEmit",
-    "postinstall":      "ts-node scripts/init-project.ts || true",
-    "ui:start":         "ts-node --transpile-only -e \"require('./server/index').startServer().then((p: any) => console.log('UI running on http://localhost:'+p))\"",
-    "ui:open":          "start http://localhost:7842"
+    "pipeline:bug": "ts-node orchestrator/run.ts bug --summary",
+    "bug:from-jira": "ts-node orchestrator/run.ts bug --jira",
+    "provider:check": "ts-node -e \"require('dotenv/config');const {providerSummary}=require('./config/llm-client');console.log(providerSummary())\"",
+    "upgrade": "node scripts/upgrade.js --zip",
+    "upgrade:dry-run": "node scripts/upgrade.js --zip",
+    "remove": "node scripts/remove.js",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "ts-node scripts/init-project.ts || true",
+    "ui:start": "ts-node --transpile-only -e \"require('./server/index').startServer().then((p: any) => console.log('UI running on http://localhost:'+p))\"",
+    "ui:open": "start http://localhost:7842"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.88.0",
     "@anthropic-ai/bedrock-sdk": "^0.28.1",
-    "@langchain/langgraph": "^0.2.0",
+    "@anthropic-ai/sdk": "^0.88.0",
     "@langchain/core": "^0.3.0",
+    "@langchain/langgraph": "^0.2.0",
     "copilot-api": "^0.7.0",
     "dotenv": "^16.0.0",
-    "playwright": "^1.45.0"
+    "formidable": "^3.5.4",
+    "playwright": "^1.45.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
+    "@types/formidable": "^3.5.1",
+    "@types/node": "^20.0.0",
     "ts-node": "^10.9.0",
-    "@types/node": "^20.0.0"
+    "typescript": "^5.5.0"
   },
   "agentsdlc": {
     "version": "2.0.0",

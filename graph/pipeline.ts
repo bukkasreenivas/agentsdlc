@@ -40,8 +40,8 @@ import { validateDeliverable }     from "../orchestrator/validator";
 import { openHumanGatePR }         from "../orchestrator/human-gate";
 import { sodCheck }                from "../orchestrator/sod";
 import { integrations }            from "../config/integrations";
-import { updateFeatureDoc }        from "../tools/feature-doc";
-import { pollForApproval }         from "../integrations/gate-factory";
+import { updateFeatureDoc }        from "../orchestrator/feature-doc";
+import { pollForApproval }         from "../orchestrator/gate-factory";
 import {
   commitFileToBranch,
   branchExists,
@@ -302,9 +302,11 @@ async function pmPromoteGateNode(state: any): Promise<Partial<PipelineState>> {
   console.log("  ⏸  PM PROMOTE GATE — Review PRD before Jira Handoff");
   console.log("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
-  const { approved, comment } = await webUIGate(
-    "pm_promote", "PM Idea Promotion", state, "Review AI PRD & Synthesized Idea", pmContent ?? {}
-  );
+  const { approved, comment } = await pollForApproval({
+    featureId:  state.feature_id,
+    stage:      "pm_promote",
+    prNumber:   undefined,
+  });
   logStage(state, "pm_promote", "human_gate", approved ? "Promoted to PO" : `Rejected: ${comment}`);
 
   if (approved) {
@@ -359,8 +361,17 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
   }
   console.log();
 
-  // 1. Write feature doc to HOST project (PM + Jira sections)
-  const docContent = await updateFeatureDoc(state, "po");
+  // 1. Write feature doc to HOST project
+  const docContent = updateFeatureDoc(
+    integrations.hostProjectPath || ".",
+    { 
+        featureId: state.feature_id, 
+        featureTitle: state.feature_title ?? state.feature_id,
+        status: "PO Review",
+        startedAt: state.created_at
+    },
+    state.deliverables ?? {}
+  );
 
   // 2. Determine the branch for the doc commit.
   //    At PO gate, the architect hasn't run yet, so feature_branch may be unset.
@@ -401,14 +412,9 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
 
   // 4. Delegate to gate factory — races GitHub review vs Web UI (whichever wins)
   const { approved, comment } = await pollForApproval({
+    featureId:  state.feature_id,
     stage:      "po",
-    stageLabel: "PO Story Review",
-    state,
-    summary:    poSummary,
-    detail:     poContent ?? {},
     prNumber:   gatePrNumber,
-    jiraKey:    epicKey,
-    webUIGate,
   });
 
   logStage(state, "po", "human_gate", approved ? "PO approved" : `PO rejected: ${comment}`);
@@ -451,8 +457,17 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
   if (designContent?.summary) console.log(`  Summary: ${designContent.summary}`);
   console.log();
 
-  // 1. Write updated feature doc to HOST project (now includes Design section)
-  const docContent = await updateFeatureDoc(state, "design");
+  // 1. Write updated feature doc to HOST project
+  const docContent = updateFeatureDoc(
+    integrations.hostProjectPath || ".",
+    { 
+        featureId: state.feature_id, 
+        featureTitle: state.feature_title ?? state.feature_id,
+        status: "Design Review",
+        startedAt: state.created_at
+    },
+    state.deliverables ?? {}
+  );
 
   // 2. Branch for doc commit — feature_branch may still be unset at this stage
   const docBranch = (state.github?.feature_branch as string | undefined) || `docs/${state.feature_id}`;
@@ -492,14 +507,9 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
 
   // 4. Race GitHub review vs Web UI — no more forced --resume after this gate
   const { approved, comment } = await pollForApproval({
+    featureId:  state.feature_id,
     stage:      "design",
-    stageLabel: "Design Review",
-    state,
-    summary:    designSummary,
-    detail:     designContent ?? {},
     prNumber:   gatePrNumber,
-    jiraKey:    state.jira?.epic_key as string | undefined,
-    webUIGate,
   });
 
   logStage(state, "design", "human_gate", approved ? "Design approved" : `Design rejected: ${comment}`);
@@ -583,8 +593,17 @@ async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
   }
   console.log();
 
-  // Write final feature doc — all pipeline sections now populated
-  await updateFeatureDoc(state, "qa");
+  // Write final feature doc
+  updateFeatureDoc(
+    integrations.hostProjectPath || ".",
+    { 
+        featureId: state.feature_id, 
+        featureTitle: state.feature_title ?? state.feature_id,
+        status: "QA Review",
+        startedAt: state.created_at
+    },
+    state.deliverables ?? {}
+  );
 
   const passRate  = qaContent?.pass_rate != null ? `${Math.round(qaContent.pass_rate * 100)}%` : "N/A";
   const qaSummary = `QA pass rate: ${passRate} | ${qaContent?.passed ?? 0} passed, ${qaContent?.failed ?? 0} failed`;
@@ -600,9 +619,11 @@ async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
     console.log(`  Approve via GitHub review OR via the Web UI at http://localhost:7842\n`);
   }
 
-  const { approved, comment } = await webUIGate(
-    "qa", "QA Review", state, qaSummary, qaContent ?? {}
-  );
+  const { approved, comment } = await pollForApproval({
+    featureId:  state.feature_id,
+    stage:      "qa",
+    prNumber:   undefined,
+  });
   logStage(state, "qa", "human_gate", approved ? "QA approved" : `QA rejected: ${comment}`);
 
   if (approved) {

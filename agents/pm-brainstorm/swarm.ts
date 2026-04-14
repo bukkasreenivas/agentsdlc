@@ -7,6 +7,8 @@ import { resolveModel, withFailover } from "../../config/llm-client";
 import { AGENT_MODELS }   from "../../config/agents";
 import { scanCodebase }   from "../../tools/codebase-scanner";
 import { makeDeliverable, writeAgentMemory } from "../../orchestrator/index";
+import { extractAllFromDir } from "../../tools/data-parser";
+import { featuresDir } from "../../orchestrator/feature-store";
 import type { PipelineState, BrainstormRound, PMBrainstormDeliverable } from "../../types/state";
 
 const PM_AGENTS = [
@@ -89,7 +91,8 @@ async function runBrainstormAgent(
   state: PipelineState,
   codeContext: string,
   previousRounds: BrainstormRound[],
-  strategyContext: string
+  strategyContext: string,
+  supplementaryData: string
 ): Promise<BrainstormRound> {
   const cfg = AGENT_MODELS[agent.model_key];
   const previousContext = previousRounds.length > 0
@@ -119,6 +122,9 @@ ${modeContext}
 === GLOBAL STRATEGY & COMPETITORS ===
 ${strategyContext}
 
+=== SUPPLEMENTARY DATA (User Feedback / Metrics) ===
+${supplementaryData || "No supplementary data files provided."}
+
 EXISTING CODEBASE CONTEXT (read carefully before analysing):
 ${codeContext}
 ${previousContext}
@@ -145,6 +151,7 @@ async function runSynthesizer(
   feature: string,
   rounds: BrainstormRound[],
   codeContext: string,
+  supplementaryData: string,
 ) {
   const cfg = AGENT_MODELS.pm_synthesizer;
   const roundsSummary = rounds.map(r =>
@@ -177,7 +184,10 @@ ${codeContext.slice(0, 2000)}
 PM Brainstorm Rounds:
 ${roundsSummary}
 
-Synthesize and write a pm_memo grounded in the real product. Output ONLY valid JSON.`,
+=== SUPPLEMENTARY DATA (User Feedback / Metrics) ===
+${supplementaryData || "No supplementary data files provided."}
+
+Synthesize and write a pm_memo grounded in the real product and data. Output ONLY valid JSON.`,
       }],
     });
     return response.content[0].type === "text" ? response.content[0].text : "{}";
@@ -210,19 +220,25 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
     strategyContext += "\n\n=== COMPETITOR STRATEGY ===\n" + fs.readFileSync(path.join(strategyDir, "competitor_analysis.md"), "utf8");
   }
 
-  console.log(`  [PM] Codebase: ${codeCtx.techStack.join(", ")}`);
-  console.log(`  [PM] Key files read: ${codeCtx.keyFileExcerpts.map(f => f.path).join(", ")}`);
   console.log(`  [PM] API routes found: ${codeCtx.apiRoutes.length}`);
+
+  // Load Supplementary Data (Uploaded files)
+  const attachmentsDir = path.join(featuresDir("features"), feature_id, "attachments");
+  const extracted = await extractAllFromDir(attachmentsDir);
+  const supplementaryData = extracted.map(e => `FILE: ${e.filename} (${e.summary})\n${e.content}`).join("\n\n---\n\n");
+  if (extracted.length > 0) {
+      console.log(`  [PM] Read ${extracted.length} supplementary data files.`);
+  }
 
   const rounds: BrainstormRound[] = [];
   for (const agent of PM_AGENTS) {
     console.log(`  [PM] Running ${agent.label}...`);
-    const round = await runBrainstormAgent(agent, state, codeContext, rounds, strategyContext);
+    const round = await runBrainstormAgent(agent, state, codeContext, rounds, strategyContext, supplementaryData);
     rounds.push(round);
   }
 
   console.log(`  [PM] Running synthesizer...`);
-  const { consensus, pm_memo } = await runSynthesizer(feature_description, rounds, codeContext);
+  const { consensus, pm_memo } = await runSynthesizer(feature_description, rounds, codeContext, supplementaryData);
   const version    = kickbackCount + 1;
   const memoryPath = `agents/pm-brainstorm/memory/runtime/pm-brainstorm-v${version}.json`;
   const content: PMBrainstormDeliverable = {

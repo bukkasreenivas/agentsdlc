@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/ROAI/.agentsdlc/**)",
+      "Read(//c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/ROAI/.agentsdlc/agents/po-agent/**)",
+      "Bash(node -e \"const A = require\\('@anthropic-ai/sdk'\\); console.log\\(Object.keys\\(A\\)\\)\")",
+      "Bash(npm show:*)",
+      "Bash(npm search:*)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); ex=d.get\\('exports',{}\\); [print\\(k\\) for k in ex if 'bedrock' in k.lower\\(\\)]\")",
+      "Bash(npm pack:*)",
+      "Bash(npm config:*)",
+      "Bash(node -e \"const net = require\\('net'\\); const s = net.createConnection\\({port: 4141, host: 'localhost'}\\); s.on\\('connect', \\(\\) => { console.log\\('open'\\); s.destroy\\(\\); }\\); s.on\\('error', \\(\\) => { console.log\\('closed'\\); }\\);\")",
+      "Read(//c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/agentsdlc/$\\(npm config get prefix\\)/lib/node_modules/**)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"const {AnthropicBedrock} = require\\('@anthropic-ai/bedrock-sdk'\\); const c = new AnthropicBedrock\\({awsRegion:'us-east-1'}\\); console.log\\('OK'\\);\")",
+      "Bash(node -e ':*)",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(cmd /c \"cd \\\\\"C:\\\\Users\\\\bukka\\\\Desktop\\\\Sreenivas Docs\\\\AI Tutorials\\\\agentsdlc\\\\\" && node_modules\\\\.bin\\\\tsc --noEmit 2>&1\")",
+      "Bash(cmd /c \"cd /d \\\\\"C:\\\\Users\\\\bukka\\\\Desktop\\\\Sreenivas Docs\\\\AI Tutorials\\\\agentsdlc\\\\\" && node_modules\\\\.bin\\\\tsc --noEmit\")",
+      "Bash(node_modules\\\\.bin\\\\tsc --noEmit)",
+      "Bash(\"./node_modules/.bin/tsc\" --noEmit)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(cp '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/agentsdlc/scripts/init-project.ts' '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/ROAI/.agentsdlc/scripts/init-project.ts')",
+      "Bash(cp '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/agentsdlc/orchestrator/run.ts' '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/ROAI/.agentsdlc/orchestrator/run.ts')",
+      "Bash(cp '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/agentsdlc/tools/codebase-scanner.ts' '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/ROAI/.agentsdlc/tools/codebase-scanner.ts')",
+      "Bash(rm -f '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/ROAI/.agentsdlc/memory/project-overview.md')",
+      "Bash(cp '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/agentsdlc/graph/pipeline.ts' '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/ROAI/.agentsdlc/graph/pipeline.ts')",
+      "Bash(cp '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/agentsdlc/agents/po-agent/agent.ts' '/c/Users/bukka/Desktop/Sreenivas Docs/AI Tutorials/ROAI/.agentsdlc/agents/po-agent/agent.ts')"
+    ]
+  }
+}

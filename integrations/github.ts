@@ -172,6 +172,17 @@ export async function getPRReviewStatus(prNumber: number): Promise<PRReviewStatu
   return { state: "PENDING", comment: "" };
 }
 
+/**
+ * Checks the merge/open status of a PR.
+ */
+export async function getPRStatus(prNumber: number): Promise<{ state: string, merged: boolean }> {
+  if (!cfg.token) return { state: "open", merged: false };
+  const pr = await ghFetch<{ state: string; merged: boolean }>(
+    `/repos/${cfg.owner}/${cfg.repo}/pulls/${prNumber}`
+  );
+  return { state: pr.state, merged: pr.merged };
+}
+
 // ── File commits via Contents API ─────────────────────────────────────────────
 
 export async function commitFileToBranch(

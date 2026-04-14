@@ -18,6 +18,7 @@ import * as fs    from "fs";
 import * as path  from "path";
 import * as url   from "url";
 import { spawn }  from "child_process";
+import * as formidable from "formidable";
 
 import {
   listFeatures,
@@ -272,7 +273,41 @@ async function handleRequest(
 
     console.log(`\n  [UI] Pipeline triggered: "${featureText.slice(0, 60)}..."`);
     console.log(`  [UI] Log: ${logFile}`);
-    json(res, { ok: true, message: "Pipeline started. Refresh the sidebar in a few seconds.", logFile });
+    json(res, { ok: true, message: "Pipeline started.", logFile: path.basename(logFile) });
+    return;
+  }
+
+  // ── POST /api/upload ────────────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/upload") {
+    const form = new formidable.IncomingForm({
+      uploadDir:      path.join(path.resolve(__dirname, ".."), "memory", "uploads"),
+      keepExtensions: true,
+      maxFileSize:    10 * 1024 * 1024, // 10MB
+    });
+
+    if (!fs.existsSync(form.uploadDir)) fs.mkdirSync(form.uploadDir, { recursive: true });
+
+    form.parse(req, (err, fields, files) => {
+      if (err) {
+        badRequest(res, "Upload failed: " + err.message);
+        return;
+      }
+      const featureId = fields.featureId?.[0] || fields.featureId || "temp";
+      const type      = fields.type?.[0] || fields.type || "features";
+      
+      const targetDir = path.join(featureDir(featureId, type as any), "attachments");
+      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+      const uploadedFiles = Array.isArray(files.file) ? files.file : [files.file];
+      for (const f of uploadedFiles) {
+        if (!f) continue;
+        const dest = path.join(targetDir, f.originalFilename || "upload");
+        fs.copyFileSync(f.filepath, dest);
+        fs.unlinkSync(f.filepath); // clean up temp
+      }
+
+      json(res, { ok: true, count: uploadedFiles.length });
+    });
     return;
   }
 

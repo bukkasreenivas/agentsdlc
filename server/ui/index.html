@@ -241,12 +241,32 @@
   
   #approval-panel .gate-label { font-size: 12px; font-weight: 700; color: var(--yellow); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;}
   .gate-label .pulsing-dot { width: 8px; height: 8px; background: var(--yellow); border-radius: 50%; animation: pulse-yellow 1.5s infinite; }
-  #approval-panel .row { display: flex; gap: 16px; align-items: flex-start; }
-  #approval-panel textarea { 
-    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; 
-    font-size: 13px; color: var(--text); resize: none; height: 60px; font-family: inherit; transition: border 0.2s;
-  }
   #approval-panel textarea:focus { outline: none; border-color: var(--accent); }
+
+  /* ── Live Console ── */
+  #console-panel {
+    position: absolute; bottom: 80px; right: 20px; width: 450px; height: 300px;
+    background: #0f172a; border: 1px solid var(--border); border-radius: 12px;
+    display: none; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); z-index: 1000;
+  }
+  #console-header {
+    background: #1e293b; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);
+  }
+  #console-header span { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em; }
+  #console-body {
+    flex: 1; padding: 12px; font-family: 'Fira Code', 'Courier New', monospace; font-size: 12px; color: #e2e8f0; overflow-y: auto; line-height: 1.5;
+  }
+  .log-line { margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 2px; }
+  .log-agent { color: var(--accent); font-weight: 700; margin-right: 8px; }
+  .log-time { color: #64748b; font-size: 10px; margin-right: 8px; }
+
+  /* ── File Upload ── */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s; margin-top: 16px;
+  }
+  .upload-zone:hover { border-color: var(--accent); background: var(--surface-hover); }
+  .upload-zone p { font-size: 12px; color: var(--text-muted); margin: 0; }
+  .file-list { margin-top: 8px; font-size: 11px; color: var(--accent); text-align: left; }
 
   /* Modals */
   .modal-backdrop {
@@ -279,7 +299,29 @@
   .modal-input:focus { outline: none; border-color: var(--accent); }
   .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; background: var(--bg);}
 
-  @keyframes pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); } 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); } }
+  :root {
+    --border: #334155;
+    --card: #1e293b;
+    --shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+    --accent-glow: rgba(99, 102, 241, 0.25);
+    --yellow: #f59e0b;
+    --green: #10b981;
+    --red: #ef4444;
+  }
+
+  /* ── Blinking Animation ── */
+  @keyframes blink-accent {
+    0% { opacity: 1; box-shadow: 0 0 5px var(--accent); }
+    50% { opacity: 0.6; box-shadow: 0 0 20px var(--accent); }
+    100% { opacity: 1; box-shadow: 0 0 5px var(--accent); }
+  }
+  .wf-node.active .wf-circle { animation: blink-accent 1.5s infinite ease-in-out; border-color: var(--accent); color: var(--accent); border-width: 3px; }
+
+  @keyframes pulse-yellow {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  }
 </style>
 </head>
 <body data-theme="dark"> <!-- Defaulting to Dark Mode, user can toggle -->
@@ -518,28 +560,60 @@ async function saveSettings() {
 }
 let logPollTimer = null;
 let currentLogName = null;
+let selectedFiles = [];
+
+function handleFileSelect(e) {
+  selectedFiles = Array.from(e.target.files);
+  const list = document.getElementById('file-list');
+  list.innerHTML = selectedFiles.map(f => `<div>• ${f.name} (${Math.round(f.size/1024)} KB)</div>`).join('');
+}
 
 async function triggerPipeline() {
   const title = document.getElementById('new-item-title').value.trim();
   const description = document.getElementById('new-item-desc').value.trim();
   if (!title && !description) { alert('Please enter a title or description.'); return; }
   const btn = document.querySelector('#new-idea-modal .btn-primary');
+  
   try {
     btn.textContent = 'Starting...';
     btn.disabled = true;
+    
+    // 1. Trigger the pipeline
     const result = await postJSON('/api/trigger', { title, description });
+    const logName = result.logFile;
+    const featureId = result.message.match(/Pipeline started/) ? null : null; // we'll get it from poll
+    
+    // 2. Upload files if any
+    if (selectedFiles.length > 0) {
+      const formData = new FormData();
+      selectedFiles.forEach(f => formData.append('file', f));
+      formData.append('featureId', 'pending'); // temporary handle
+      await fetch('/api/upload', { method: 'POST', body: formData });
+    }
+
     closeModal('new-idea-modal');
     document.getElementById('new-item-title').value = '';
     document.getElementById('new-item-desc').value = '';
-    currentLogName = result.logFile ? result.logFile.split(/[\\/]/).pop() : null;
-    openLogModal();
+    selectedFiles = [];
+    document.getElementById('file-list').innerHTML = '';
+
+    // 3. Open the console
+    startLiveConsole(logName);
     poll();
   } catch(e) {
-    alert('Failed to start pipeline: ' + e.message);
+    alert('Failed: ' + e.message);
   } finally {
     btn.textContent = 'Execute Brainstorm';
     btn.disabled = false;
   }
+}
+
+function startLiveConsole(logName) {
+  currentLogName = logName;
+  document.getElementById('console-panel').style.display = 'flex';
+  document.getElementById('console-body').innerHTML = '<div class="log-line">Initializing agent execution...</div>';
+  if (logPollTimer) clearInterval(logPollTimer);
+  logPollTimer = setInterval(refreshLog, 2000);
 }
 
 function openLogModal() {
@@ -560,15 +634,23 @@ async function refreshLog() {
   if (!currentLogName) return;
   try {
     const res = await fetch('/api/logs/' + currentLogName);
-    if (!res.ok) { document.getElementById('log-status').textContent = 'Log not ready yet...'; return; }
+    if (!res.ok) return;
     const text = await res.text();
-    const el = document.getElementById('log-output');
-    el.textContent = text || '(no output yet)';
-    el.scrollTop = el.scrollHeight;
-    document.getElementById('log-status').textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
-  } catch(e) {
-    document.getElementById('log-status').textContent = 'Error reading log: ' + e.message;
-  }
+    const body = document.getElementById('console-body');
+    
+    // Parse the log into pretty lines
+    const lines = text.split('\n').filter(l => l.trim());
+    body.innerHTML = lines.map(l => {
+        let cls = 'log-line';
+        let content = esc(l);
+        if (l.includes('[PM]') || l.includes('[PO]') || l.includes('[Design]')) {
+            const m = l.match(/\[(.*?)\] (.*)/);
+            if (m) content = `<span class="log-agent">[${m[1]}]</span> ${esc(m[2])}`;
+        }
+        return `<div class="${cls}">${content}</div>`;
+    }).join('');
+    body.scrollTop = body.scrollHeight;
+  } catch(e) {}
 }
 
 // ── List & Navigation ──
