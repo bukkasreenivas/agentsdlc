@@ -929,7 +929,8 @@ function renderContent() {
   }
 
   if(!stageData) return c.innerHTML = '<div class="empty">Stage output in progress...</div>';
-  } else if (selectedStage === 'po') {
+  
+  if (selectedStage === 'po') {
      const content = stageData.content ?? stageData;
      const stories = content.user_stories || [];
      const storyMapUrl = content.story_map_url || '';
