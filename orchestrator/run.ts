@@ -93,7 +93,8 @@ async function runFeaturePipeline() {
   let savedState: any = null;
 
   if (resume) {
-    const meta = loadLatestMeta();
+    const specificId = get("--id");
+    const meta = specificId ? { featureId: specificId, featureTitle: "Resuming..." } : loadLatestMeta();
     if (meta) {
       featureId  = meta.featureId as `${string}-${string}-${string}-${string}-${string}`;
       savedState = loadState(featureId);

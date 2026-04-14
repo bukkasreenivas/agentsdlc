@@ -365,6 +365,43 @@ async function handleRequest(
     return;
   }
 
+  // ── POST /api/resume ───────────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/resume") {
+    let body: any;
+    try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
+    const { featureId } = body;
+    if (!featureId) { badRequest(res, "Required: featureId"); return; }
+
+    const agentsdlcDir = path.resolve(__dirname, "..");
+    const logDir  = path.join(agentsdlcDir, "memory", "runtime");
+    const logFile = path.join(logDir, `resume-${featureId.slice(0,8)}-${Date.now()}.log`);
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.writeFileSync(logFile, "");
+    const logFd = fs.openSync(logFile, "a");
+
+    const child = spawn(
+      process.execPath,
+      [
+        "-r", "ts-node/register",
+        path.join(agentsdlcDir, "orchestrator", "run.ts"),
+        "--resume",
+        "--id", featureId,
+      ],
+      {
+        cwd:      agentsdlcDir,
+        detached: true,
+        stdio:    ["ignore", logFd, logFd],
+        env:      { ...process.env, TS_NODE_PROJECT: path.join(agentsdlcDir, "tsconfig.json") },
+        shell:    false,
+      }
+    );
+    child.unref();
+    fs.closeSync(logFd);
+    
+    json(res, { ok: true, message: "Pipeline resumed.", logFile: path.basename(logFile) });
+    return;
+  }
+
   notFound(res);
 }
 

@@ -371,8 +371,13 @@
   <!-- ── Main panel ── -->
   <main id="main">
     <div id="main-header" style="display:none">
-      <h2 id="feature-title">—</h2>
-      <div class="meta" id="feature-meta">—</div>
+      <div style="display:flex; justify-content:space-between; align-items:start">
+        <div style="flex:1">
+          <h2 id="feature-title">—</h2>
+          <div class="meta" id="feature-meta">—</div>
+        </div>
+        <div id="resume-btn-container" style="padding-top:4px"></div>
+      </div>
     </div>
     
     <!-- Workflow Visualizer -->
@@ -628,6 +633,15 @@ async function triggerPipeline() {
   }
 }
 
+async function resumePipeline(featureId) {
+    try {
+        const res = await postJSON('/api/resume', { featureId });
+        startLiveConsole(res.logFile);
+        alert("Pipeline resumed. Monitoring output...");
+        poll();
+    } catch(e) { alert("Failed to resume: " + e.message); }
+}
+
 function startLiveConsole(logName) {
   currentLogName = logName;
   document.getElementById('console-panel').style.display = 'flex';
@@ -749,7 +763,14 @@ async function selectItem(id, type) {
     const m = itemData.manifest;
     document.getElementById('feature-title').textContent = m.featureTitle;
     document.getElementById('feature-meta').textContent = 
-      `ID: ${m.featureId}  •  Status: ${m.status.toUpperCase()}  •  Requested By: ${m.requestedBy?.substring(0,15)}  •  Updated: ${new Date(m.updatedAt).toLocaleString()}`;
+      `ID: ${m.featureId}  •  Status: ${m.status.toUpperCase()}  •  Updated: ${new Date(m.updatedAt).toLocaleString()}`;
+    
+    const resBtn = document.getElementById('resume-btn-container');
+    if (m.status === 'running') {
+        resBtn.innerHTML = `<button class="btn btn-primary" onclick="resumePipeline('${m.featureId}')" style="background:#f59e0b; color:black; font-weight:700; padding: 8px 16px; font-size:12px; border:none; height:auto">⚡ Resume Pipeline</button>`;
+    } else {
+        resBtn.innerHTML = '';
+    }
     
     const gate = pendingGates.find(g => g.featureId === id);
     selectedStage = gate?.stage ?? m.stages?.[m.stages.length - 1] ?? 'pm_brainstorm';
