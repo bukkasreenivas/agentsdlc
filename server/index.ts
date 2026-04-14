@@ -240,21 +240,19 @@ async function handleRequest(
       badRequest(res, "Required: title or description"); return;
     }
 
-    const featureText = [title, description].filter(Boolean).join(" — ");
+    // Join with plain ASCII separator; strip any double-quotes to avoid shell breakage
+    const featureText = [title, description].filter(Boolean).join(" - ").replace(/"/g, "'");
     const agentsdlcDir = path.resolve(__dirname, "..");
 
-    // Spawn the pipeline as a detached background process
-    const child = spawn(
-      "npx",
-      ["ts-node", "orchestrator/run.ts", "--feature", featureText],
-      {
-        cwd:      agentsdlcDir,
-        detached: true,
-        stdio:    "ignore",
-        env:      { ...process.env },
-        shell:    true,
-      }
-    );
+    // Build a single command string so Windows cmd.exe quotes the feature text correctly
+    const cmd = `npx ts-node orchestrator/run.ts --feature "${featureText}"`;
+    const child = spawn(cmd, [], {
+      cwd:      agentsdlcDir,
+      detached: true,
+      stdio:    "ignore",
+      env:      { ...process.env },
+      shell:    true,
+    });
     child.unref();
 
     console.log(`\n  [UI] Pipeline triggered: "${featureText.slice(0, 60)}…" (pid will detach)`);
