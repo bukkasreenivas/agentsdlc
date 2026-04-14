@@ -257,6 +257,12 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
 
   console.log(`  [PM] Running synthesizer...`);
   const { consensus, pm_memo } = await runSynthesizer(feature_description, rounds, codeContext, supplementaryData);
+  console.log(`  [PM] Synthesis Complete!`);
+  console.log(`  [PM] Decision:   ${consensus.build_decision.toUpperCase()}`);
+  console.log(`  [PM] Confidence: ${(consensus.confidence * 100).toFixed(0)}%`);
+  console.log(`  [PM] Impact:     ${consensus.north_star_impact}`);
+  console.log(`  [PM] Memo:       ${pm_memo.substring(0, 300)}...`);
+
   const version    = kickbackCount + 1;
   const memoryPath = `agents/pm-brainstorm/memory/runtime/pm-brainstorm-v${version}.json`;
   const content: PMBrainstormDeliverable = {

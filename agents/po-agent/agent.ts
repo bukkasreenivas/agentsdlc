@@ -167,6 +167,12 @@ Output ONLY valid JSON.`,
     slack_thread_url: slackThread?.ts ?? jiraUrl,
   };
 
+  console.log(`  [PO] Synthesis Complete!`);
+  console.log(`  [PO] Epic Created: ${epic.key} — ${parsed.epic_summary}`);
+  console.log(`  [PO] Stories (${stories.length}): `);
+  stories.forEach((s, i) => console.log(`      ${i+1}. ${s.summary} (${s.story_points} pts)`));
+  console.log(`  [PO] View on Jira: ${jiraUrl}`);
+
   await writeAgentMemory("po-agent", state.feature_id, {
     event:          "po_complete",
     epic_key:       epic.key,
