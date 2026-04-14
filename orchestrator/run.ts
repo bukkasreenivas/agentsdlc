@@ -148,7 +148,7 @@ async function runFeaturePipeline() {
 
   // If resuming with saved state: pass it as initial so wrapNode can skip
   // already-completed stages via the deliverable guard in pipeline.ts.
-  // Fresh start: pass blank initial state.
+  const initial = savedState ?? {
     feature_id: featureId, feature_title: feature, feature_description: feature,
     repo_path: hostPath, requested_by: "cli", created_at: new Date().toISOString(),
     pipeline_mode: modeArg as "idea" | "feature",
