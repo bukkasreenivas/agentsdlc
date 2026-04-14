@@ -191,6 +191,7 @@ async function handleRequest(
       host_project_path: envContent.match(/^HOST_PROJECT_PATH=(.*)$/m)?.[1] ?? "",
       llm_provider:      envContent.match(/^LLM_PROVIDER=(.*)$/m)?.[1] ?? "",
       jira_project_key:  envContent.match(/^JIRA_PROJECT_KEY=(.*)$/m)?.[1] ?? "",
+      gate_strategy:     envContent.match(/^GATE_STRATEGY=(.*)$/m)?.[1] ?? "web_ui",
     };
     json(res, settings);
     return;
