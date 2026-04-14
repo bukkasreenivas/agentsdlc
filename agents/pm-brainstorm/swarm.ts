@@ -152,6 +152,7 @@ async function runSynthesizer(
   rounds: BrainstormRound[],
   codeContext: string,
   supplementaryData: string,
+  chatHistory: any[] = []
 ) {
   const cfg = AGENT_MODELS.pm_synthesizer;
   const roundsSummary = rounds.map(r =>
@@ -187,7 +188,12 @@ ${roundsSummary}
 === SUPPLEMENTARY DATA (User Feedback / Metrics) ===
 ${supplementaryData || "No supplementary data files provided."}
 
-Synthesize and write a pm_memo grounded in the real product and data. Output ONLY valid JSON.`,
+=== USER FEEDBACK & CHAT HISTORY (ACTION REQUIRED) ===
+${chatHistory.length > 0 ? chatHistory.map(m => `[${m.role}] ${m.text}`).join("\n") : "No user chat history. Use the brainstorm rounds as primary source."}
+
+Synthesize and write a pm_memo grounded in the real product and data. 
+If user chat history is present, PRIORITIZE the user's instructions and modify the PRD accordingly.
+Output ONLY valid JSON.`,
       }],
     });
     return response.content[0].type === "text" ? response.content[0].text : "{}";
@@ -256,7 +262,10 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
   }
 
   console.log(`  [PM] Running synthesizer...`);
-  const { consensus, pm_memo } = await runSynthesizer(feature_description, rounds, codeContext, supplementaryData);
+  const existingDeliverable = state.deliverables?.pm_brainstorm?.content as PMBrainstormDeliverable;
+  const chatHistory = existingDeliverable?.chat_history || [];
+  
+  const { consensus, pm_memo } = await runSynthesizer(feature_description, rounds, codeContext, supplementaryData, chatHistory);
   console.log(`  [PM] Synthesis Complete!`);
   console.log(`  [PM] Decision:   ${consensus.build_decision.toUpperCase()}`);
   console.log(`  [PM] Confidence: ${(consensus.confidence * 100).toFixed(0)}%`);
@@ -271,6 +280,7 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
     brainstorm_rounds: rounds,
     consensus,
     pm_memo,
+    chat_history: chatHistory
   };
 
   await writeAgentMemory("pm-brainstorm", feature_id, {

@@ -402,6 +402,52 @@ async function handleRequest(
     return;
   }
 
+  // ── POST /api/chat ─────────────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/chat") {
+    let body: any;
+    try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
+    const { featureId, message, stage = "pm_brainstorm" } = body;
+    if (!featureId || !message) { badRequest(res, "Required: featureId, message"); return; }
+
+    // 1. Persist the chat message into the stage memory
+    // So the agent reads it on the next loop
+    const type = pathname.includes('ideas') ? 'ideas' : 'features';
+    const sData: any = readStageData(featureId, stage, type as any) || { chat_history: [] };
+    if (!sData.chat_history) sData.chat_history = [];
+    sData.chat_history.push({ role: 'user', text: message, timestamp: new Date().toISOString() });
+    writeStageData(featureId, stage, sData, type as any);
+
+    // 2. Trigger a resume run
+    const agentsdlcDir = path.resolve(__dirname, "..");
+    const logDir  = path.join(agentsdlcDir, "memory", "runtime");
+    const logFile = path.join(logDir, `chat-${featureId.slice(0,8)}-${Date.now()}.log`);
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.writeFileSync(logFile, "");
+    const logFd = fs.openSync(logFile, "a");
+
+    const child = spawn(
+      process.execPath,
+      [
+        "-r", "ts-node/register",
+        path.join(agentsdlcDir, "orchestrator", "run.ts"),
+        "--resume",
+        "--id", featureId,
+      ],
+      {
+        cwd:      agentsdlcDir,
+        detached: true,
+        stdio:    ["ignore", logFd, logFd],
+        env:      { ...process.env, TS_NODE_PROJECT: path.join(agentsdlcDir, "tsconfig.json") },
+        shell:    false,
+      }
+    );
+    child.unref();
+    fs.closeSync(logFd);
+    
+    json(res, { ok: true, message: "Chat sent. PM is revising.", logFile: path.basename(logFile) });
+    return;
+  }
+
   notFound(res);
 }
 
