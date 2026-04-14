@@ -8,7 +8,7 @@ import { AGENT_MODELS }   from "../../config/agents";
 import { scanCodebase }   from "../../tools/codebase-scanner";
 import { makeDeliverable, writeAgentMemory } from "../../orchestrator/index";
 import { extractAllFromDir } from "../../tools/data-parser";
-import { featuresDir } from "../../orchestrator/feature-store";
+import { featuresDir, syncFromPipelineState } from "../../orchestrator/feature-store";
 import type { PipelineState, BrainstormRound, PMBrainstormDeliverable } from "../../types/state";
 
 const PM_AGENTS = [
@@ -235,6 +235,24 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
     console.log(`  [PM] Running ${agent.label}...`);
     const round = await runBrainstormAgent(agent, state, codeContext, rounds, strategyContext, supplementaryData);
     rounds.push(round);
+    
+    // PROGRESS SYNC: Update UI after each agent finishes
+    const tempContent: PMBrainstormDeliverable = {
+      feature_id,
+      feature_title:    state.feature_title,
+      brainstorm_rounds: rounds,
+      consensus: { build_decision: "proceed", confidence: 0.5, agreed_scope: "Partial analysis in progress...", open_risks: [], north_star_impact: "", ost_opportunity: "" },
+      pm_memo: "Analysis in progress. Please wait for the synthesizer to finish..."
+    };
+    const syncState = { 
+        ...state, 
+        current_stage: "pm_brainstorm", 
+        deliverables: { 
+            ...state.deliverables, 
+            pm_brainstorm: makeDeliverable("pm_brainstorm", kickbackCount + 1, "PMBrainstormDeliverable", tempContent, "") 
+        } 
+    };
+    syncFromPipelineState(feature_id, syncState, state.pipeline_mode === "idea" ? "ideas" : "features");
   }
 
   console.log(`  [PM] Running synthesizer...`);
