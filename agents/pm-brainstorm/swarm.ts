@@ -9,7 +9,33 @@ import { scanCodebase }   from "../../tools/codebase-scanner";
 import { makeDeliverable, writeAgentMemory } from "../../orchestrator/index";
 import { extractAllFromDir } from "../../tools/data-parser";
 import { featuresDir, syncFromPipelineState } from "../../orchestrator/feature-store";
+import { featuresDir, syncFromPipelineState } from "../../orchestrator/feature-store";
 import type { PipelineState, BrainstormRound, PMBrainstormDeliverable } from "../../types/state";
+
+/** Robust JSON parser that handles markdown fences and trailing noise */
+function safeJSONParse(raw: string, fallback: any = {}): any {
+  try {
+    const clean = raw.trim().replace(/^```json/, "").replace(/```$/, "").trim();
+    // Try finding the first { and last }
+    const start = clean.indexOf("{");
+    const end = clean.lastIndexOf("}");
+    if (start !== -1 && end !== -1) {
+      return JSON.parse(clean.substring(start, end + 1));
+    }
+    return JSON.parse(clean);
+  } catch (err) {
+    console.warn(` [safeJSONParse] Failed to parse: ${err.message}. Retrying simple repair...`);
+    try {
+        // Attempt very simple repair for unterminated strings if possible
+        let repair = raw.trim();
+        if (repair.endsWith('...')) repair = repair.substring(0, repair.length - 3) + '"}';
+        if (!repair.endsWith('}')) repair += '}';
+        return JSON.parse(repair);
+    } catch {
+        return fallback;
+    }
+  }
+}
 
 const PM_AGENTS = [
   { id:"visionary",   label:"Visionary PM",    model_key:"pm_brainstorm", skills:["/strategy","/north-star","OST"],
@@ -142,7 +168,7 @@ Output ONLY valid JSON.`,
     return response.content[0].type === "text" ? response.content[0].text : "{}";
   }, `pm-brainstorm:${agent.id}`);
 
-  const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+  const parsed = safeJSONParse(raw, { perspective: "Error parsing agent response", fit_score: 5, arguments_for: [], arguments_against: [] });
   return {
     agent_id:          agent.id,
     perspective:       parsed.perspective ?? "",
@@ -205,7 +231,7 @@ Output ONLY valid JSON.`,
     return response.content[0].type === "text" ? response.content[0].text : "{}";
   }, "pm-brainstorm:synthesizer");
 
-  return JSON.parse(raw.replace(/```json|```/g, "").trim());
+  return safeJSONParse(raw, { consensus: { build_decision: "proceed", confidence: 0.5, agreed_scope: "Parsing Error", open_risks: [], north_star_impact: "", ost_opportunity: "" }, pm_memo: "An error occurred while parsing the agent's PRD synthesis. Please check the logs." });
 }
 
 export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partial<PipelineState>> {
