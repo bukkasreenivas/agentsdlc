@@ -366,7 +366,7 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
 
   // 1. Write feature doc to HOST project
   const docContent = updateFeatureDoc(
-    integrations.hostProjectPath || ".",
+    integrations.project.hostProjectPath || ".",
     { 
         featureId: state.feature_id, 
         featureTitle: state.feature_title ?? state.feature_id,
@@ -465,7 +465,7 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
 
   // 1. Write updated feature doc to HOST project
   const docContent = updateFeatureDoc(
-    integrations.hostProjectPath || ".",
+    integrations.project.hostProjectPath || ".",
     { 
         featureId: state.feature_id, 
         featureTitle: state.feature_title ?? state.feature_id,
@@ -604,7 +604,7 @@ async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
 
   // Write final feature doc
   updateFeatureDoc(
-    integrations.hostProjectPath || ".",
+    integrations.project.hostProjectPath || ".",
     { 
         featureId: state.feature_id, 
         featureTitle: state.feature_title ?? state.feature_id,

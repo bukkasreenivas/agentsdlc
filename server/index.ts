@@ -337,15 +337,18 @@ async function handleRequest(
       maxFileSize:    10 * 1024 * 1024, // 10MB
     });
 
-    if (!fs.existsSync(form.uploadDir)) fs.mkdirSync(form.uploadDir, { recursive: true });
+    const uploadDirPath = (form as any).options.uploadDir as string;
+    if (!fs.existsSync(uploadDirPath)) fs.mkdirSync(uploadDirPath, { recursive: true });
 
-    form.parse(req, (err, fields, files) => {
+    (form as any).parse(req, (err: any, fields: any, files: any) => {
       if (err) {
         badRequest(res, "Upload failed: " + err.message);
         return;
       }
-      const featureId = fields.featureId?.[0] || fields.featureId || "temp";
-      const type      = fields.type?.[0] || fields.type || "features";
+      const rawFeatureId = fields.featureId;
+      const featureId    = Array.isArray(rawFeatureId) ? rawFeatureId[0] : (rawFeatureId || "temp");
+      const rawType      = fields.type;
+      const type         = Array.isArray(rawType) ? rawType[0] : (rawType || "features");
       
       const targetDir = path.join(featureDir(featureId, type as any), "attachments");
       if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
@@ -355,7 +358,7 @@ async function handleRequest(
         if (!f) continue;
         const dest = path.join(targetDir, f.originalFilename || "upload");
         fs.copyFileSync(f.filepath, dest);
-        fs.unlinkSync(f.filepath); // clean up temp
+        fs.unlinkSync(f.filepath); 
       }
 
       json(res, { ok: true, count: uploadedFiles.length });

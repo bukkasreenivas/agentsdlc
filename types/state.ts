@@ -59,6 +59,7 @@ export interface PMBrainstormDeliverable {
   brainstorm_rounds: BrainstormRound[];
   consensus: PMConsensus;
   pm_memo: string;          // Final synthesized markdown memo
+  chat_history: { role: string; text: string; timestamp: string }[];
 }
 
 export interface BrainstormRound {

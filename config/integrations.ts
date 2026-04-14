@@ -56,7 +56,8 @@ export const integrations = {
     slowMo:    parseInt(opt("PLAYWRIGHT_SLOW_MO", "0"), 10),
   },
   project: {
-    gitUrl:    opt("PROJECT_GIT_URL"),
+    gitUrl:          opt("PROJECT_GIT_URL"),
+    hostProjectPath: opt("HOST_PROJECT_PATH", ".."),
   },
   gate: {
     strategy:           opt("GATE_STRATEGY",        "web_ui"),   // "web_ui" | "github_review" | "jira_transition"
