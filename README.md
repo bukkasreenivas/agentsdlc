@@ -11,16 +11,18 @@ You describe a feature. The pipeline handles everything from PM analysis through
 ```
 Feature description
   → PM Brainstorm Swarm    5 specialist PM agents debate the feature
-  → PO Agent               Creates Jira Epic + User Stories
-  → Design Agent           Generates Figma wireframes                    [human gate]
+  → PO Agent               Creates Jira Epic + User Stories              [human gate ⏸]
+  → Design Agent           Generates Figma wireframes                    [human gate ⏸]
   → Architect Agent        Reads your codebase, writes ADR, creates branch
   → Dev Swarm              Writes code into your actual project files
   → NFR Agent              Reviews latency, DB, security (runs in parallel)
   → Review Agent           Peer reviews the PR
   → CI/CD Agent            Triggers your pipeline, deploys to staging
-  → QA Agent               Generates tests, records a video per test     [human gate]
+  → QA Agent               Generates tests, records a video per test     [human gate ⏸]
   → Done                   All Jira tickets updated, Teams/Slack notified
 ```
+
+At each `[human gate ⏸]` the pipeline pauses and opens a **browser-based approval UI** at `http://localhost:7842`. The PM/PO/QA team reviews the deliverables in the browser and clicks Approve or Reject. The pipeline continues within 2 seconds of the decision. All outputs and approvals are committed to git automatically.
 
 It also has a separate bug fix pipeline:
 ```
@@ -41,10 +43,14 @@ Everything lives inside `.agentsdlc/`. Nothing outside this folder is modified w
   config/              model routing (agents.ts), credentials (integrations.ts), LLM client (llm-client.ts)
   graph/               LangGraph pipeline definition
   integrations/        Jira, GitHub, Bitbucket, Figma, Teams, Slack
-  orchestrator/        pipeline entry point, Jira lifecycle hooks
+  orchestrator/        pipeline entry point, Jira lifecycle hooks, feature-store (git persistence)
+  server/              HTTP approval server (index.ts) + browser UI (ui/index.html)
   tools/               codebase scanner, file writer (with backup + rollback)
   types/               all TypeScript types
-  memory/              pipeline audit logs (gitignored)
+  memory/
+    features/          per-feature deliverables + approvals (committed to git)
+    checkpoints/       resume state for --resume flag
+    runtime/           pipeline audit logs
   scripts/             upgrade.js, remove.js
   .env                 your credentials — separate from host project .env
   package.json         agent dependencies — separate from host project
@@ -230,6 +236,87 @@ Config files with changes (your version kept, new version saved as .upgraded):
 ```
 
 Open both files, copy any new settings you want from `.upgraded` into your version, then delete the `.upgraded` file.
+
+---
+
+## Human Approval UI
+
+### How it works
+
+When the pipeline reaches a human gate (PO Stories, Design, or QA), it automatically:
+
+1. Starts a local web server on **port 7842** (if not already running)
+2. Writes the deliverable to `memory/features/<featureId>/`
+3. Prints the URL in the terminal:
+   ```
+   🌐 Open browser to review and approve:
+      http://localhost:7842
+   ```
+4. Waits up to **30 minutes** for a browser decision
+5. Resumes the pipeline within **2 seconds** of Approve/Reject
+6. Commits the approval + all deliverables to git
+
+### Opening the UI
+
+The URL is printed automatically when a gate is reached. You can also open it manually:
+
+```bash
+cd .agentsdlc
+
+# Start the UI server (useful for reviewing past features)
+npm run ui:start
+
+# Open in browser (Windows)
+npm run ui:open
+```
+
+Then navigate to: **http://localhost:7842**
+
+### What you see in the UI
+
+| Panel | What it shows |
+|---|---|
+| Left sidebar | All features with status badges. Pending gates shown with a ⏸ yellow badge. Auto-refreshes every 3s |
+| PM Analysis tab | Full PM brainstorm memo rendered as markdown, consensus decision, confidence level |
+| PO Stories tab | Epic summary with Jira link, all user stories as cards with acceptance criteria and test scenarios |
+| Design tab | Figma file key and frame URLs |
+| QA Results tab | Pass rate, passed/failed counts, individual test case results |
+| Approval panel | Appears at the bottom when a gate is active. Type rejection feedback or leave blank to approve |
+
+### Approving or rejecting
+
+- **Approve** — click **✓ Approve** (no comment needed). Pipeline continues to next stage immediately.
+- **Reject** — type your revision instructions in the text box, then click **✗ Reject**. The feedback is passed back to the agent as a kickback, which revises and re-presents for review.
+
+### Git memory — single source of truth
+
+Every deliverable and approval is committed to git in `memory/features/<featureId>/`:
+
+```
+memory/features/<featureId>/
+  manifest.json          feature identity, stage list, Jira/GitHub links
+  pm_brainstorm.json     PM analysis output
+  po.json                Epic + user stories
+  po.approval.json       approval record (who approved, when, comment)
+  design.json            design output
+  design.approval.json
+  qa.json                QA results
+  qa.approval.json
+  approvals.json         append-only audit log of all approvals
+```
+
+Git commits are made automatically at:
+- Each human approval or rejection (with `approvedBy`, timestamp, comment)
+- Pipeline completion (`done`)
+- Pipeline escalation (`escalated`)
+
+### Fallback behaviour
+
+If the server fails to start, or 30 minutes pass with no browser action, the pipeline falls back to the original **terminal prompt**:
+
+```
+▶  Approve and proceed?  [Enter/Y = approve  |  type feedback = revise]:
+```
 
 ---
 
