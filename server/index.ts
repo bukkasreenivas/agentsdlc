@@ -172,7 +172,7 @@ async function handleRequest(
 
   // ── GET /api/settings ───────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/settings") {
-    const envPath = path.resolve(__dirname, "../../.env");
+    const envPath = path.resolve(__dirname, "../.env");
     let envContent = "";
     if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, "utf8");
     const settings = {
@@ -225,7 +225,7 @@ async function handleRequest(
     let body: any;
     try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
     
-    const envPath = path.resolve(__dirname, "../../.env");
+    const envPath = path.resolve(__dirname, "../.env");
     let envContent = "";
     if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, "utf8");
     
