@@ -24,6 +24,7 @@ import {
   listFeatures,
   readManifest,
   readStageData,
+  writeStageData,
   listAllPending,
   writeApproval,
   deletePending,
