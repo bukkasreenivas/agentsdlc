@@ -6,23 +6,33 @@ A self-contained multi-agent SDLC pipeline that lives inside any VS Code project
 
 ## What it does
 
-You describe a feature. The pipeline handles everything from PM analysis through to QA sign-off:
+You can drop in rough customer feedback, and the pipeline handles everything from PM Discovery through to QA sign-off across a **Dual-Pipeline**:
 
-```
-Feature description
+**1. Discovery Pipeline (Ideas)**
+```text
+Customer Idea / Meeting Notes
   → PM Brainstorm Swarm    5 specialist PM agents debate the feature
-  → PO Agent               Creates Jira Epic + User Stories              [human gate ⏸]
+  → Synthesizer            Generates Product Requirements Document
+  → PM Promote Gate        Review the PRD                           [human gate ⏸]
+```
+
+**2. Execution Pipeline (Features)**
+*Once a PRD is approved, it promotes into Execution:*
+```text
+  → PO Agent               Creates Jira Epic + User Stories              
   → Design Agent           Generates Figma wireframes                    [human gate ⏸]
-  → Architect Agent        Reads your codebase, writes ADR, creates branch
+  → Architect Agent        Reads tracked codebase, writes ADR, creates branches
   → Dev Swarm              Writes code into your actual project files
   → NFR Agent              Reviews latency, DB, security (runs in parallel)
   → Review Agent           Peer reviews the PR
+  → Code PR Gate           Tech Lead review before merging/deploying     [human gate ⏸]
   → CI/CD Agent            Triggers your pipeline, deploys to staging
   → QA Agent               Generates tests, records a video per test     [human gate ⏸]
-  → Done                   All Jira tickets updated, Teams/Slack notified
+  → Done                   Jira updated, Teams/Slack notified
 ```
 
-At each `[human gate ⏸]` the pipeline pauses and opens a **browser-based approval UI** at `http://localhost:7842`. The PM/PO/QA team reviews the deliverables in the browser and clicks Approve or Reject. The pipeline continues within 2 seconds of the decision. All outputs and approvals are committed to git automatically.
+At each `[human gate ⏸]` the pipeline pauses and opens a **Vercel-like PM Workspace UI** at `http://localhost:7842`. 
+The PM/PO/QA team reviews deliverables in a beautiful Light/Dark mode interface with a full Workflow Dashboard tracking your nodes. Approvals push automatically to Git.
 
 It also has a separate bug fix pipeline:
 ```
@@ -48,10 +58,12 @@ Everything lives inside `.agentsdlc/`. Nothing outside this folder is modified w
   tools/               codebase scanner, file writer (with backup + rollback)
   types/               all TypeScript types
   memory/
-    features/          per-feature deliverables + approvals (committed to git)
+    ideas/             raw discovery, synthesized requirements, and idea approvals
+    features/          active SDLC execution artifacts + git persistence
     checkpoints/       resume state for --resume flag
     runtime/           pipeline audit logs
-  scripts/             upgrade.js, remove.js
+    strategy/          auto-generated context, competitor analysis, and codebase graphs
+  scripts/             strategy-sync.ts, upgrade.js, remove.js
   .env                 your credentials — separate from host project .env
   package.json         agent dependencies — separate from host project
   tsconfig.json        TypeScript config scoped to .agentsdlc only
@@ -276,12 +288,14 @@ Then navigate to: **http://localhost:7842**
 
 | Panel | What it shows |
 |---|---|
-| Left sidebar | All features with status badges. Pending gates shown with a ⏸ yellow badge. Auto-refreshes every 3s |
-| PM Analysis tab | Full PM brainstorm memo rendered as markdown, consensus decision, confidence level |
-| PO Stories tab | Epic summary with Jira link, all user stories as cards with acceptance criteria and test scenarios |
-| Design tab | Figma file key and frame URLs |
-| QA Results tab | Pass rate, passed/failed counts, individual test case results |
-| Approval panel | Appears at the bottom when a gate is active. Type rejection feedback or leave blank to approve |
+| Workspace Header | Settings ⚙️ Modal (Connect Git URL natively), Theme toggle (Light/Dark Mode). |
+| Workflow Dashboard | Real-time sequence flowchart showing active/completed/pending nodes. |
+| Left sidebar | Dual "Ideas" vs "Execution" toggle. All items shown with relative badges. |
+| PM Synthesis tab | PRD generated from Customer Feedback, and the AI's consensus build/confidence decision. |
+| PO Stories tab | Epic summary with Jira link, user stories, acceptance criteria, test scenarios. |
+| Design tab | Figma file key and frame URLs. |
+| QA Results tab | Pass rate, passed/failed counts, individual test case results. |
+| Floating Approval Panel | Sticky bottom bar active during a gate. Type feedback or click Approve. |
 
 ### Approving or rejecting
 
