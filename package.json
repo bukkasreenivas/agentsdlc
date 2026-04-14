@@ -16,7 +16,7 @@
     "remove":           "node scripts/remove.js",
     "typecheck":        "tsc --noEmit",
     "postinstall":      "ts-node scripts/init-project.ts || true",
-    "ui:start":         "ts-node -e \"require('./server/index').startServer().then(p => console.log('UI running on http://localhost:'+p))\"",
+    "ui:start":         "ts-node --transpile-only -e \"require('./server/index').startServer().then(p => console.log('UI running on http://localhost:'+p))\"",
     "ui:open":          "start http://localhost:7842"
   },
   "dependencies": {
