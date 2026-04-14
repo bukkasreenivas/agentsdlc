@@ -661,6 +661,28 @@ async function resumePipeline(featureId) {
     } catch(e) { alert("Failed to resume: " + e.message); }
 }
 
+async function deleteIdea(event, id) {
+    event.stopPropagation();
+    if (!confirm("Are you sure you want to delete this idea? This cannot be undone.")) return;
+    try {
+        await fetch(`/api/ideas/${id}`, { method: 'DELETE' });
+        if (selectedId === id) {
+            selectedId = null;
+            document.getElementById('main-header').style.display = 'none';
+            document.getElementById('workflow-vis').style.display = 'none';
+            document.getElementById('tabs').style.display = 'none';
+            document.getElementById('content').innerHTML = `
+              <div class="empty">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:16px;">
+                    <circle cx="12" cy="12" r="10"></circle><polyline points="12 16 16 12 12 8"></polyline><line x1="8" y1="12" x2="16" y2="12"></line>
+                  </svg>
+                  <p>Select an item from the sidebar to view details and approve gates.</p>
+              </div>`;
+        }
+        poll();
+    } catch(e) { alert("Delete failed: " + e.message); }
+}
+
 function startLiveConsole(logName) {
   currentLogName = logName;
   document.getElementById('console-panel').style.display = 'flex';
@@ -760,7 +782,10 @@ function renderSidebar() {
     const date = new Date(f.startedAt).toLocaleDateString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
     
     return `<div class="feature-item ${f.featureId === selectedId ? 'active' : ''}" onclick="selectItem('${f.featureId}', '${f.storeType || currentMode}')">
-      <div class="title">${esc(f.featureTitle)}</div>
+      <div style="display:flex; justify-content:space-between; align-items:start">
+        <div class="title">${esc(f.featureTitle)}</div>
+        ${currentMode === 'ideas' ? `<div onclick="deleteIdea(event, '${f.featureId}')" style="color:var(--text-muted); padding:4px; margin:-4px; cursor:pointer;" title="Delete Idea">&times;</div>` : ''}
+      </div>
       <div class="meta">${date}</div>
       <div class="badge ${badgeClass}">${lbl}</div>
     </div>`;

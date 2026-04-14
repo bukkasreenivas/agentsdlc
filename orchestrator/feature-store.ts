@@ -38,6 +38,13 @@ function ensure(featureId: string, type: StoreType = "features"): void {
   fs.mkdirSync(featureDir(featureId, type), { recursive: true });
 }
 
+export function deleteFeature(featureId: string, type: StoreType = "features"): void {
+  const dir = featureDir(featureId, type);
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Manifest ─────────────────────────────────────────────────────────────────
 
 export interface FeatureManifest {

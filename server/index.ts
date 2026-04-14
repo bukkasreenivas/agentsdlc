@@ -160,6 +160,16 @@ async function handleRequest(
     return;
   }
 
+  // ── DELETE /api/ideas/:id ──────────────────────────────────────────────────
+  const deleteMatch = pathname.match(/^\/api\/ideas\/([^/]+)$/);
+  if (method === "DELETE" && deleteMatch) {
+    const itemId = deleteMatch[1];
+    const { deleteFeature } = await import("../orchestrator/feature-store");
+    deleteFeature(itemId, "ideas");
+    json(res, { ok: true });
+    return;
+  }
+
   // ── GET /api/features/:id/:stage (or /api/ideas/:id/:stage) ─────────────────
   const stageMatch = pathname.match(/^\/api\/(features|ideas)\/([^/]+)\/([^/]+)$/);
   if (method === "GET" && stageMatch) {
