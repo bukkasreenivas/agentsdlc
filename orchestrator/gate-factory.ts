@@ -18,17 +18,19 @@ export interface ApprovalResult {
 export async function pollForApproval(params: {
   featureId: string,
   stage:     string,
+  mode?:     "idea" | "feature",
   prNumber?: number,
   timeoutMs?: number,
 }): Promise<ApprovalResult> {
-  const { featureId, stage, prNumber, timeoutMs = 30 * 60 * 1000 } = params;
+  const { featureId, stage, mode = "feature", prNumber, timeoutMs = 30 * 60 * 1000 } = params;
   const deadline = Date.now() + timeoutMs;
+  const storeType = mode === "idea" ? "ideas" : "features";
 
-  console.log(`  [gate] Polling for approval (Web UI + GitHub + Terminal fallback)...`);
+  console.log(`  [gate] Polling for ${stage} (Store: ${storeType}, GitHub: ${prNumber || 'N/A'})...`);
 
   while (Date.now() < deadline) {
     // 1. Check Web UI Approval
-    const uiRec = readApproval(featureId, stage);
+    const uiRec = readApproval(featureId, stage, storeType);
     if (uiRec) {
       deletePending(featureId, stage);
       return { approved: uiRec.approved, comment: uiRec.comment };

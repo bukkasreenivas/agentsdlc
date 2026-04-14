@@ -305,6 +305,7 @@ async function pmPromoteGateNode(state: any): Promise<Partial<PipelineState>> {
   const { approved, comment } = await pollForApproval({
     featureId:  state.feature_id,
     stage:      "pm_promote",
+    mode:       state.pipeline_mode,
     prNumber:   undefined,
   });
   logStage(state, "pm_promote", "human_gate", approved ? "Promoted to PO" : `Rejected: ${comment}`);
@@ -414,6 +415,7 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
   const { approved, comment } = await pollForApproval({
     featureId:  state.feature_id,
     stage:      "po",
+    mode:       state.pipeline_mode,
     prNumber:   gatePrNumber,
   });
 
@@ -509,6 +511,7 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
   const { approved, comment } = await pollForApproval({
     featureId:  state.feature_id,
     stage:      "design",
+    mode:       state.pipeline_mode,
     prNumber:   gatePrNumber,
   });
 
@@ -622,6 +625,7 @@ async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
   const { approved, comment } = await pollForApproval({
     featureId:  state.feature_id,
     stage:      "qa",
+    mode:       state.pipeline_mode,
     prNumber:   undefined,
   });
   logStage(state, "qa", "human_gate", approved ? "QA approved" : `QA rejected: ${comment}`);

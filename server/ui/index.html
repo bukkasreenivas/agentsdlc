@@ -579,7 +579,11 @@ async function triggerPipeline() {
     btn.disabled = true;
     
     // 1. Trigger the pipeline
-    const result = await postJSON('/api/trigger', { title, description });
+    const result = await postJSON('/api/trigger', { 
+      title, 
+      description,
+      mode: currentMode === 'ideas' ? 'idea' : 'feature'
+    });
     const logName = result.logFile;
     const featureId = result.message.match(/Pipeline started/) ? null : null; // we'll get it from poll
     

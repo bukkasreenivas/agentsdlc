@@ -252,14 +252,16 @@ async function handleRequest(
     fs.writeFileSync(logFile, ""); // ensure file exists before child opens it
     const logFd = fs.openSync(logFile, "a");
 
-    // Use process.execPath (absolute node binary) + ts-node/register so we can
-    // use shell:false — this makes stdio fd inheritance reliable on Windows.
+    const modeFlag = body.mode === "idea" ? "--mode idea" : "--mode feature";
+
+    // Use process.execPath (absolute node binary) + ts-node/register
     const child = spawn(
       process.execPath,
       [
         "-r", "ts-node/register",
         path.join(agentsdlcDir, "orchestrator", "run.ts"),
         "--feature", featureText,
+        ...(body.mode === "idea" ? ["--mode", "idea"] : ["--mode", "feature"]),
       ],
       {
         cwd:      agentsdlcDir,

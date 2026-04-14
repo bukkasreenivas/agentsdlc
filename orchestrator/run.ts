@@ -22,6 +22,7 @@ import { syncWorkspace } from "./workspace";
 const args = process.argv.slice(2);
 const get  = (flag: string) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : undefined; };
 const has  = (flag: string) => args.includes(flag);
+const modeArg = get("--mode") ?? "feature";
 const mode = args[0];
 
 const hostPath = get("--repo") ?? syncWorkspace();
@@ -139,7 +140,8 @@ async function runFeaturePipeline() {
     stages:      [],
     currentStage: "pm_brainstorm",
     status:      "running",
-  });
+    storeType:   modeArg === "idea" ? "ideas" : "features",
+  }, modeArg === "idea" ? "ideas" : "features");
 
   const { buildGraph } = await import("../graph/pipeline");
   const graph = buildGraph();
@@ -147,9 +149,9 @@ async function runFeaturePipeline() {
   // If resuming with saved state: pass it as initial so wrapNode can skip
   // already-completed stages via the deliverable guard in pipeline.ts.
   // Fresh start: pass blank initial state.
-  const initial = savedState ?? {
     feature_id: featureId, feature_title: feature, feature_description: feature,
     repo_path: hostPath, requested_by: "cli", created_at: new Date().toISOString(),
+    pipeline_mode: modeArg as "idea" | "feature",
     current_stage: "pm_brainstorm" as const, stage_history: [], kickbacks: [],
     retry_counts: {}, max_retries: maxRetry, deliverables: {}, human_approvals: {},
     jira: {}, github: {}, figma: {}, slack: {}, deployment: {}, stage_log: [], escalated: false,
@@ -171,8 +173,14 @@ async function runFeaturePipeline() {
     if (s.current_stage) {
       saveState(featureId, s);
       saveMeta({ featureId, featureTitle: feature, startedAt: initial.created_at, stage: s.current_stage });
-      // Sync to memory/features/<featureId>/ (single source of truth for web UI and git)
-      syncFromPipelineState(featureId, s);
+      
+      // Determine store type (sync to 'ideas' if in idea mode, otherwise 'features')
+      const syncType = (s.pipeline_mode === "idea") ? "ideas" : "features";
+      syncFromPipelineState(featureId, s, syncType);
+      
+      // If we just promoted to feature, also update the idea manifest to 'done' or similar 
+      // or just ensure the feature store has everything. 
+      // For now, syncFromPipelineState handles the target store.
     }
 
     // Print only NEW log entries (stage_log accumulates across nodes)
