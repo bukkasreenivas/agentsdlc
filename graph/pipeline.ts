@@ -14,6 +14,18 @@
 import { StateGraph, Annotation, MemorySaver, END, START } from "@langchain/langgraph";
 import * as readline from "readline";
 import type { PipelineState, StageId, KickbackRecord, StageLogEntry, Deliverable } from "../types/state";
+import {
+  startServer,
+  getPort,
+}                          from "../server/index";
+import {
+  writePending,
+  deletePending,
+  readApproval,
+  writeStageData,
+  readManifest,
+  PendingGate,
+}                          from "../orchestrator/feature-store";
 import { runPMBrainstormSwarm }    from "../agents/pm-brainstorm/swarm";
 import { runPOAgent }              from "../agents/po-agent/agent";
 import { runDesignAgent }          from "../agents/design-agent/agent";
@@ -208,6 +220,70 @@ function askTerminalApproval(prompt: string): Promise<{ approved: boolean; comme
   });
 }
 
+// ── Web UI gate ───────────────────────────────────────────────────────────────
+// Writes a pending gate file, starts the HTTP server (idempotent), prints the
+// URL and then polls every 2 s for a human approval written by the UI.
+// Falls back to terminal if the server cannot start.
+
+const GATE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
+
+async function webUIGate(
+  stage:      StageId,
+  stageLabel: string,
+  state:      any,
+  summary:    string,
+  detail:     unknown
+): Promise<{ approved: boolean; comment: string }> {
+  // Write stage data so UI can render it even if it was written before
+  writeStageData(state.feature_id, stage, state.deliverables?.[stage] ?? detail);
+
+  const pending: PendingGate = {
+    featureId:    state.feature_id,
+    featureTitle: state.feature_title ?? state.feature_id,
+    stage,
+    stageLabel,
+    summary,
+    detail,
+    createdAt:  new Date().toISOString(),
+    timeoutAt:  new Date(Date.now() + GATE_TIMEOUT_MS).toISOString(),
+  };
+
+  writePending(state.feature_id, stage, pending);
+
+  let port: number;
+  try {
+    port = await startServer();
+  } catch {
+    // Server start failed — fall back to terminal
+    deletePending(state.feature_id, stage);
+    return askTerminalApproval(
+      `  ▶  [${stageLabel}] Approve and continue?  [Enter/Y = approve  |  type feedback = revise]: `
+    );
+  }
+
+  console.log(`\n  🌐 Open browser to review and approve:`);
+  console.log(`     http://localhost:${port}\n`);
+  console.log(`     Waiting for ${stageLabel} approval… (30-min timeout)\n`);
+
+  // Poll every 2 s
+  const deadline = Date.now() + GATE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 2000));
+    const rec = readApproval(state.feature_id, stage);
+    if (rec) {
+      deletePending(state.feature_id, stage);
+      return { approved: rec.approved, comment: rec.comment };
+    }
+  }
+
+  // Timeout — fall back to terminal
+  deletePending(state.feature_id, stage);
+  console.log("  [gate] 30-min timeout — falling back to terminal prompt");
+  return askTerminalApproval(
+    `  ▶  [${stageLabel}] Approve and continue?  [Enter/Y = approve  |  type feedback = revise]: `
+  );
+}
+
 async function poGateNode(state: any): Promise<Partial<PipelineState>> {
   // Already approved (loaded from saved state on --resume) — skip prompt
   if (state.human_approvals?.po?.approved === true) {
@@ -249,8 +325,12 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
     return { github: { ...state.github, pr_url: gateInfo.pr_url } };
   }
 
-  const { approved, comment } = await askTerminalApproval(
-    "  ▶  Approve and proceed to Design?  [Enter/Y = approve  |  type feedback = revise]: "
+  const poSummary = poContent?.user_stories?.length
+    ? `${poContent.user_stories.length} stories for Epic ${poContent.epic_key ?? epicKey ?? 'N/A'}`
+    : `Epic ${epicKey ?? 'N/A'} — review in Jira`;
+
+  const { approved, comment } = await webUIGate(
+    "po", "PO Story Review", state, poSummary, poContent ?? {}
   );
   logStage(state, "po", "human_gate", approved ? "PO approved" : `PO rejected: ${comment}`);
 
@@ -303,8 +383,12 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
     return { github: { ...state.github, pr_url: gateInfo.pr_url } };
   }
 
-  const { approved, comment } = await askTerminalApproval(
-    "  ▶  Approve designs and proceed to Architecture?  [Enter/Y = approve  |  type feedback = revise]: "
+  const designSummary = state.figma?.file_key
+    ? `Figma wireframes ready: ${state.figma.file_key}`
+    : designContent?.summary ?? "Design output ready for review";
+
+  const { approved, comment } = await webUIGate(
+    "design", "Design Review", state, designSummary, designContent ?? {}
   );
   logStage(state, "design", "human_gate", approved ? "Design approved" : `Design rejected: ${comment}`);
 
@@ -358,8 +442,11 @@ async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
     return { github: { ...state.github, pr_url: gateInfo.pr_url } };
   }
 
-  const { approved, comment } = await askTerminalApproval(
-    "  ▶  Approve QA and ship to production?  [Enter/Y = approve  |  type feedback = re-run]: "
+  const passRate  = qaContent?.pass_rate != null ? `${Math.round(qaContent.pass_rate * 100)}%` : "N/A";
+  const qaSummary = `QA pass rate: ${passRate} | ${qaContent?.passed ?? 0} passed, ${qaContent?.failed ?? 0} failed`;
+
+  const { approved, comment } = await webUIGate(
+    "qa", "QA Review", state, qaSummary, qaContent ?? {}
   );
   logStage(state, "qa", "human_gate", approved ? "QA approved" : `QA rejected: ${comment}`);
 

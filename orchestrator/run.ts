@@ -12,6 +12,11 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 import { randomUUID }      from "crypto";
 import { providerSummary, getHostProjectPath } from "../config/llm-client";
 import { ensureProjectOverview }               from "../scripts/init-project";
+import {
+  syncFromPipelineState,
+  writeManifest,
+  commitToGit,
+}                                              from "./feature-store";
 
 const args = process.argv.slice(2);
 const get  = (flag: string) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : undefined; };
@@ -122,6 +127,19 @@ async function runFeaturePipeline() {
   // Save meta so --resume can find this run
   saveMeta({ featureId, featureTitle: feature, startedAt: new Date().toISOString() });
 
+  // Initialise feature store manifest (git source of truth)
+  writeManifest(featureId, {
+    featureId,
+    featureTitle: feature,
+    startedAt:   new Date().toISOString(),
+    updatedAt:   new Date().toISOString(),
+    repoPath:    hostPath,
+    requestedBy: "cli",
+    stages:      [],
+    currentStage: "pm_brainstorm",
+    status:      "running",
+  });
+
   const { buildGraph } = await import("../graph/pipeline");
   const graph = buildGraph();
 
@@ -152,6 +170,8 @@ async function runFeaturePipeline() {
     if (s.current_stage) {
       saveState(featureId, s);
       saveMeta({ featureId, featureTitle: feature, startedAt: initial.created_at, stage: s.current_stage });
+      // Sync to memory/features/<featureId>/ (single source of truth for web UI and git)
+      syncFromPipelineState(featureId, s);
     }
 
     // Print only NEW log entries (stage_log accumulates across nodes)
@@ -183,13 +203,18 @@ async function runFeaturePipeline() {
       console.log(`\n  ✓ Pipeline complete!`);
       console.log(`    Epic:    ${s.jira?.epic_key ?? "N/A"}`);
       console.log(`    PR:      ${s.github?.pr_url ?? "N/A"}`);
-      console.log(`    Staging: ${s.deployment?.staging_url ?? "N/A"}\n`);
+      console.log(`    Staging: ${s.deployment?.staging_url ?? "N/A"}`);
+      console.log(`    Memory:  memory/features/${featureId}/\n`);
+      // Final git commit — all deliverables + approvals
+      commitToGit(featureId, `pipeline complete — all stages done`);
     }
 
     if (s.current_stage === "escalated" || s.escalated) {
       console.log(`\n  ✗ Pipeline escalated`);
       console.log(`    Reason: ${s.escalation_reason ?? "see memory/runtime/pipeline.log.md"}`);
+      console.log(`    Memory: memory/features/${featureId}/`);
       console.log(`    Resume: npm run pipeline:feature --resume\n`);
+      commitToGit(featureId, `pipeline escalated — ${s.escalation_reason?.slice(0, 60) ?? "manual intervention needed"}`);
     }
   }
 }
