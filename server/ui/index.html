@@ -116,6 +116,8 @@
     transition: all 0.2s;
   }
   .btn-secondary:hover { background: var(--surface-hover); }
+  .btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
+  .btn-icon { width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
 
   /* ── Layout ── */
   #app-body { display: flex; flex: 1; overflow: hidden; }
@@ -129,7 +131,7 @@
     flex-direction: column; 
     z-index: 5;
   }
-  .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 16px; }
   .mode-toggle {
     display: flex;
     background: var(--bg);
@@ -361,12 +363,16 @@
       <div class="mode-toggle">
         <div class="mode-btn active" id="mode-ideas" onclick="setMode('ideas')">Ideas</div>
         <div class="mode-btn" id="mode-features" onclick="setMode('features')">Execution</div>
-      <div style="font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px;">
-        <span style="color:var(--accent)">✦</span> PROJECTS
       </div>
-      <div style="display: flex; gap: 6px;">
-        <button class="btn btn-sm btn-secondary" onclick="openModal('discovery-modal')" title="Strategic Discovery Lab">🔍 Discover</button>
-        <button class="btn btn-sm btn-primary" onclick="openModal('new-idea-modal')">+ New <span class="hide-mobile">Idea</span></button>
+      
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 6px;">
+          <span style="color:var(--accent); font-size:10px;">✦</span> Projects
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-sm btn-secondary btn-icon" onclick="openModal('discovery-modal')" title="Strategic Discovery Lab">🔍</button>
+          <button class="btn btn-sm btn-primary" onclick="openModal('new-idea-modal')">+ New</button>
+        </div>
       </div>
     </div>
     <div id="feature-list">
