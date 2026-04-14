@@ -150,6 +150,58 @@ export async function getLatestCommitSHA(branch: string): Promise<string> {
   return ref.object.sha;
 }
 
+// ── PR Review Status (gate polling) ──────────────────────────────────────────
+
+export interface PRReviewStatus {
+  state:   "APPROVED" | "CHANGES_REQUESTED" | "PENDING";
+  comment: string;
+}
+
+export async function getPRReviewStatus(prNumber: number): Promise<PRReviewStatus> {
+  if (!cfg.token) return { state: "PENDING", comment: "" };
+
+  const reviews = await ghFetch<Array<{ state: string; body: string; user: { type: string } }>>(
+    `/repos/${cfg.owner}/${cfg.repo}/pulls/${prNumber}/reviews`
+  );
+  for (let i = reviews.length - 1; i >= 0; i--) {
+    const r = reviews[i];
+    if (r.user?.type === "Bot") continue;
+    if (r.state === "APPROVED")          return { state: "APPROVED",          comment: r.body };
+    if (r.state === "CHANGES_REQUESTED") return { state: "CHANGES_REQUESTED", comment: r.body };
+  }
+  return { state: "PENDING", comment: "" };
+}
+
+// ── File commits via Contents API ─────────────────────────────────────────────
+
+export async function commitFileToBranch(
+  branch:        string,
+  filePath:      string,
+  content:       string,
+  commitMessage: string
+): Promise<void> {
+  if (!cfg.token) {
+    console.log(`[GitHub stub] commitFileToBranch ${branch}:${filePath}`);
+    return;
+  }
+  const encoded = Buffer.from(content, "utf8").toString("base64");
+
+  let existingSha: string | undefined;
+  try {
+    const existing = await ghFetch<{ sha: string }>(
+      `/repos/${cfg.owner}/${cfg.repo}/contents/${filePath}?ref=${branch}`
+    );
+    existingSha = existing.sha;
+  } catch { /* file doesn't exist yet — that's fine */ }
+
+  await ghFetch(`/repos/${cfg.owner}/${cfg.repo}/contents/${filePath}`, "PUT", {
+    message: commitMessage,
+    content: encoded,
+    branch,
+    ...(existingSha ? { sha: existingSha } : {}),
+  });
+}
+
 // ── Bitbucket adapter (same interface, different API) ─────────────────────────
 
 const { bitbucket: bbCfg } = integrations;

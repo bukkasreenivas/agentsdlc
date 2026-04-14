@@ -347,6 +347,18 @@ export async function getIssue(issueKey: string): Promise<{
   };
 }
 
+// ---- Get issue status (used by jira_transition gate strategy) -----------
+
+/** Returns the current Jira status name for an issue. */
+export async function getIssueStatus(issueKey: string): Promise<string> {
+  if (!isJiraConfigured()) {
+    console.log(`[Jira stub] getIssueStatus(${issueKey})`);
+    return "To Do";
+  }
+  const issue = await jiraFetch<any>(`/issue/${issueKey}?fields=status`);
+  return issue.fields?.status?.name ?? "Unknown";
+}
+
 // ---- Attach video to issue (QA results) --------------------------------
 
 export async function attachVideoLinkToIssue(

@@ -40,6 +40,13 @@ import { validateDeliverable }     from "../orchestrator/validator";
 import { openHumanGatePR }         from "../orchestrator/human-gate";
 import { sodCheck }                from "../orchestrator/sod";
 import { integrations }            from "../config/integrations";
+import { updateFeatureDoc }        from "../tools/feature-doc";
+import { pollForApproval }         from "../integrations/gate-factory";
+import {
+  commitFileToBranch,
+  branchExists,
+  createBranch,
+}                                  from "../integrations/github";
 
 // ── Node wrappers ─────────────────────────────────────────────────────────────
 
@@ -331,7 +338,7 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
   }
 
   const poContent = state.deliverables?.po?.content as any;
-  const epicKey   = state.jira?.epic_key  as string | undefined;
+  const epicKey   = state.jira?.epic_key as string | undefined;
   const storyKeys = (state.jira?.story_keys ?? []) as string[];
   const jiraBase  = integrations.jira?.baseUrl;
   const retries   = state.retry_counts?.po ?? 0;
@@ -352,91 +359,75 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
   }
   console.log();
 
-  const poSummary = poContent?.user_stories?.length
-    ? `${poContent.user_stories.length} stories for Epic ${poContent.epic_key ?? epicKey ?? "N/A"}`
-    : `Epic ${epicKey ?? "N/A"} — review in Jira`;
+  // 1. Write feature doc to HOST project (PM + Jira sections)
+  const docContent = await updateFeatureDoc(state, "po");
 
-  // ── ALWAYS write the pending gate file so the Web UI shows approval buttons ──
-  // This must happen before the GitHub PR branch so the UI reflects the gate
-  // regardless of which approval mechanism the human chooses.
-  writeStageData(state.feature_id, "po", state.deliverables?.po ?? poContent);
+  // 2. Determine the branch for the doc commit.
+  //    At PO gate, the architect hasn't run yet, so feature_branch may be unset.
+  const docBranch = (state.github?.feature_branch as string | undefined) || `docs/${state.feature_id}`;
 
-  const pending: PendingGate = {
-    featureId:    state.feature_id,
-    featureTitle: state.feature_title ?? state.feature_id,
-    stage:        "po",
-    stageLabel:   "PO Story Review",
-    summary:      poSummary,
-    detail:       poContent ?? {},
-    createdAt:    new Date().toISOString(),
-    timeoutAt:    new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-  };
-  writePending(state.feature_id, "po", pending);
+  let gatePrNumber: number | undefined;
 
-  // If GitHub is configured, open a PR as the primary gate mechanism.
-  // The Web UI approval is a secondary path — first one wins.
+  // 3. If GitHub is configured: push the feature doc to the branch, then open gate PR
   if (isGithubConfigured()) {
+    try {
+      if (!(await branchExists(docBranch))) await createBranch(docBranch);
+      await commitFileToBranch(
+        docBranch,
+        `docs/features/${state.feature_id}.md`,
+        docContent,
+        `[agentsdlc] PO gate: feature doc for ${state.feature_id}`
+      );
+    } catch (err) {
+      console.warn(`  [po_gate] Doc commit failed: ${(err as Error).message}`);
+    }
+
     const gateInfo = await openHumanGatePR({
       stage: "po", title: `[GATE] PO Review — ${state.feature_title}`,
-      body: `Review Epic + Stories.\nEpic: ${epicKey ?? "N/A"}\nMerge to approve.`,
+      body: `Review Epic + Stories.\nEpic: ${epicKey ?? "N/A"}\n\nSee \`docs/features/${state.feature_id}.md\` for full context.\nMerge to approve.`,
       deliverable: state.deliverables?.po, featureId: state.feature_id,
     });
     logStage(state, "po", "human_gate", `Gate PR opened: ${gateInfo.pr_url}`);
     console.log(`  PR opened: ${gateInfo.pr_url}`);
-    console.log(`  Merge the PR OR approve via the Web UI at http://localhost:7842\n`);
+    console.log(`  Approve via GitHub review OR via the Web UI at http://localhost:7842\n`);
+
+    const prMatch = gateInfo.pr_url.match(/\/pull\/(\d+)$/);
+    gatePrNumber = prMatch ? parseInt(prMatch[1], 10) : undefined;
   }
 
-  // Poll for Web UI approval (or terminal fallback after timeout)
-  let port: number;
-  try { port = await startServer(); } catch { port = 0; }
+  const poSummary = poContent?.user_stories?.length
+    ? `${poContent.user_stories.length} stories for Epic ${poContent.epic_key ?? epicKey ?? "N/A"}`
+    : `Epic ${epicKey ?? "N/A"} — review in Jira`;
 
-  if (port) {
-    console.log(`\n  🌐 Open browser to review and approve: http://localhost:${port}\n`);
-    const deadline = Date.now() + 30 * 60 * 1000;
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 2000));
-      const rec = readApproval(state.feature_id, "po");
-      if (rec) {
-        deletePending(state.feature_id, "po");
-        const { approved, comment } = rec;
-        logStage(state, "po", "human_gate", approved ? "PO approved via UI" : `PO rejected via UI: ${comment}`);
-        if (approved) {
-          console.log("\n  ✓ Approved — proceeding to Design\n");
-          return { human_approvals: { ...state.human_approvals, po: { approved: true, comment } } };
-        }
-        console.log(`\n  ↩ Sending back to PO agent with feedback: "${comment}"\n`);
-        return {
-          human_approvals: { ...state.human_approvals, po: { approved: false, comment } },
-          kickbacks: [{
-            stage: "po" as StageId, reason: "po_stories_rejected" as KickbackRecord["reason"],
-            detail: comment, retry_count: retries + 1,
-            timestamp: new Date().toISOString(), actionable: comment,
-          }],
-          retry_counts: { ...state.retry_counts, po: retries + 1 },
-        };
-      }
-    }
-    // Timeout — delete pending and fall through to terminal
-    deletePending(state.feature_id, "po");
-    console.log("  [gate] 30-min timeout — falling back to terminal prompt");
-  }
+  // 4. Delegate to gate factory — races GitHub review vs Web UI (whichever wins)
+  const { approved, comment } = await pollForApproval({
+    stage:      "po",
+    stageLabel: "PO Story Review",
+    state,
+    summary:    poSummary,
+    detail:     poContent ?? {},
+    prNumber:   gatePrNumber,
+    jiraKey:    epicKey,
+    webUIGate,
+  });
 
-  // Terminal fallback
-  const { approved, comment } = await askTerminalApproval(
-    `  ▶  [PO Story Review] Approve and continue?  [Enter/Y = approve  |  type feedback = revise]: `
-  );
   logStage(state, "po", "human_gate", approved ? "PO approved" : `PO rejected: ${comment}`);
+
   if (approved) {
     console.log("\n  ✓ Approved — proceeding to Design\n");
     return { human_approvals: { ...state.human_approvals, po: { approved: true, comment } } };
   }
+
   console.log(`\n  ↩ Sending back to PO agent with feedback: "${comment}"\n`);
   return {
     human_approvals: { ...state.human_approvals, po: { approved: false, comment } },
     kickbacks: [{
-      stage: "po" as StageId, reason: "po_stories_rejected" as KickbackRecord["reason"],
-      detail: comment, retry_count: retries + 1,
-      timestamp: new Date().toISOString(), actionable: comment,
+      stage:       "po" as StageId,
+      reason:      "po_stories_rejected" as KickbackRecord["reason"],
+      detail:      comment,
+      retry_count: retries + 1,
+      timestamp:   new Date().toISOString(),
+      actionable:  comment,
     }],
     retry_counts: { ...state.retry_counts, po: retries + 1 },
   };
@@ -460,25 +451,57 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
   if (designContent?.summary) console.log(`  Summary: ${designContent.summary}`);
   console.log();
 
+  // 1. Write updated feature doc to HOST project (now includes Design section)
+  const docContent = await updateFeatureDoc(state, "design");
+
+  // 2. Branch for doc commit — feature_branch may still be unset at this stage
+  const docBranch = (state.github?.feature_branch as string | undefined) || `docs/${state.feature_id}`;
+
+  let gatePrNumber: number | undefined;
+
+  // 3. Push doc to branch and open gate PR — pipeline now polls instead of returning early
   if (isGithubConfigured()) {
+    try {
+      if (!(await branchExists(docBranch))) await createBranch(docBranch);
+      await commitFileToBranch(
+        docBranch,
+        `docs/features/${state.feature_id}.md`,
+        docContent,
+        `[agentsdlc] Design gate: feature doc updated for ${state.feature_id}`
+      );
+    } catch (err) {
+      console.warn(`  [design_gate] Doc commit failed: ${(err as Error).message}`);
+    }
+
     const gateInfo = await openHumanGatePR({
       stage: "design", title: `[GATE] Design Review — ${state.feature_title}`,
-      body: `Review Figma wireframes.\nFigma: ${state.figma?.file_key ?? "N/A"}\nMerge to approve.`,
+      body: `Review Figma wireframes.\nFigma: ${state.figma?.file_key ?? "N/A"}\n\nSee \`docs/features/${state.feature_id}.md\` for full context.\nMerge to approve.`,
       deliverable: state.deliverables?.design, featureId: state.feature_id,
     });
     logStage(state, "design", "human_gate", `Gate PR opened: ${gateInfo.pr_url}`);
     console.log(`  PR opened: ${gateInfo.pr_url}`);
-    console.log(`  Merge to approve, then resume: npm run pipeline:feature --resume\n`);
-    return { github: { ...state.github, pr_url: gateInfo.pr_url } };
+    console.log(`  Approve via GitHub review OR via the Web UI at http://localhost:7842\n`);
+
+    const prMatch = gateInfo.pr_url.match(/\/pull\/(\d+)$/);
+    gatePrNumber = prMatch ? parseInt(prMatch[1], 10) : undefined;
   }
 
   const designSummary = state.figma?.file_key
     ? `Figma wireframes ready: ${state.figma.file_key}`
     : designContent?.summary ?? "Design output ready for review";
 
-  const { approved, comment } = await webUIGate(
-    "design", "Design Review", state, designSummary, designContent ?? {}
-  );
+  // 4. Race GitHub review vs Web UI — no more forced --resume after this gate
+  const { approved, comment } = await pollForApproval({
+    stage:      "design",
+    stageLabel: "Design Review",
+    state,
+    summary:    designSummary,
+    detail:     designContent ?? {},
+    prNumber:   gatePrNumber,
+    jiraKey:    state.jira?.epic_key as string | undefined,
+    webUIGate,
+  });
+
   logStage(state, "design", "human_gate", approved ? "Design approved" : `Design rejected: ${comment}`);
 
   if (approved) {
@@ -490,9 +513,12 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
   return {
     human_approvals: { ...state.human_approvals, design: { approved: false, comment } },
     kickbacks: [{
-      stage: "design" as StageId, reason: "design_rejected" as KickbackRecord["reason"],
-      detail: comment, retry_count: retries + 1,
-      timestamp: new Date().toISOString(), actionable: comment,
+      stage:       "design" as StageId,
+      reason:      "design_rejected" as KickbackRecord["reason"],
+      detail:      comment,
+      retry_count: retries + 1,
+      timestamp:   new Date().toISOString(),
+      actionable:  comment,
     }],
     retry_counts: { ...state.retry_counts, design: retries + 1 },
   };
@@ -557,20 +583,22 @@ async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
   }
   console.log();
 
+  // Write final feature doc — all pipeline sections now populated
+  await updateFeatureDoc(state, "qa");
+
+  const passRate  = qaContent?.pass_rate != null ? `${Math.round(qaContent.pass_rate * 100)}%` : "N/A";
+  const qaSummary = `QA pass rate: ${passRate} | ${qaContent?.passed ?? 0} passed, ${qaContent?.failed ?? 0} failed`;
+
   if (isGithubConfigured()) {
     const gateInfo = await openHumanGatePR({
       stage: "qa", title: `[GATE] QA Review — ${state.feature_title}`,
-      body: `QA complete. Review results and merge to approve.\nVideos: ${state.deliverables?.qa?.memory_path ?? "N/A"}`,
+      body: `QA complete. Review results and merge to approve.\nVideos: ${state.deliverables?.qa?.memory_path ?? "N/A"}\n\nSee \`docs/features/${state.feature_id}.md\` for full context.`,
       deliverable: state.deliverables?.qa, featureId: state.feature_id,
     });
     logStage(state, "qa", "human_gate", `Gate PR opened: ${gateInfo.pr_url}`);
     console.log(`  PR opened: ${gateInfo.pr_url}`);
-    console.log(`  Merge to approve, then resume: npm run pipeline:feature --resume\n`);
-    return { github: { ...state.github, pr_url: gateInfo.pr_url } };
+    console.log(`  Approve via GitHub review OR via the Web UI at http://localhost:7842\n`);
   }
-
-  const passRate  = qaContent?.pass_rate != null ? `${Math.round(qaContent.pass_rate * 100)}%` : "N/A";
-  const qaSummary = `QA pass rate: ${passRate} | ${qaContent?.passed ?? 0} passed, ${qaContent?.failed ?? 0} failed`;
 
   const { approved, comment } = await webUIGate(
     "qa", "QA Review", state, qaSummary, qaContent ?? {}
@@ -586,9 +614,12 @@ async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
   return {
     human_approvals: { ...state.human_approvals, qa: { approved: false, comment } },
     kickbacks: [{
-      stage: "qa" as StageId, reason: "qa_tests_failed" as KickbackRecord["reason"],
-      detail: comment, retry_count: retries + 1,
-      timestamp: new Date().toISOString(), actionable: comment,
+      stage:       "qa" as StageId,
+      reason:      "qa_tests_failed" as KickbackRecord["reason"],
+      detail:      comment,
+      retry_count: retries + 1,
+      timestamp:   new Date().toISOString(),
+      actionable:  comment,
     }],
     retry_counts: { ...state.retry_counts, qa: retries + 1 },
   };

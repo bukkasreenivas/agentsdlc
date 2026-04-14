@@ -58,4 +58,8 @@ export const integrations = {
   project: {
     gitUrl:    opt("PROJECT_GIT_URL"),
   },
+  gate: {
+    strategy:           opt("GATE_STRATEGY",        "web_ui"),   // "web_ui" | "github_review" | "jira_transition"
+    jiraApprovedStatus: opt("JIRA_APPROVED_STATUS", "Ready for Dev"),
+  },
 };
