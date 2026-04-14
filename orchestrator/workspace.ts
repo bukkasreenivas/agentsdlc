@@ -1,7 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
-import { integrations } from "../config/integrations";
 
 const WORKSPACES_DIR = path.resolve(__dirname, "../memory/workspaces");
 
@@ -10,7 +9,7 @@ const WORKSPACES_DIR = path.resolve(__dirname, "../memory/workspaces");
  * or pulls the latest changes if it does. Returns the local path to the workspace.
  */
 export function syncWorkspace(gitUrl?: string): string {
-  const urlToUse = gitUrl ?? integrations.project.gitUrl;
+  const urlToUse = gitUrl ?? process.env.PROJECT_GIT_URL ?? "";
 
   if (!urlToUse) {
     // Fall back to local HOST_PROJECT_PATH logic if no remote URL is provided
