@@ -246,8 +246,8 @@ If user chat history is present, PRIORITIZE the user's instructions and modify t
 Output ONLY valid JSON.`,
       }],
     });
-    return response.content[0].type === "text" ? response.content[0].text : "{}";
-  }, "pm-brainstorm:synthesizer");
+    return safeJSONParse(raw, { consensus: { build_decision: "proceed", confidence: 0.5, agreed_scope: "Parsing Error", open_risks: [], north_star_impact: "", ost_opportunity: "" }, pm_memo: "An error occurred while parsing the agent's PRD synthesis. Please check the logs." });
+}
 
 async function runDiscoverySynthesizer(
   rounds: BrainstormRound[],
