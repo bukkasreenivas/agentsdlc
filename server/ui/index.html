@@ -258,6 +258,13 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 500px; max-width: 90vw;
     box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); overflow: hidden; transform: scale(0.95); transition: transform 0.2s;
   }
+  .modal.modal-wide { width: 800px; }
+  #log-output {
+    background: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 12px;
+    padding: 16px; border-radius: 8px; height: 400px; overflow-y: auto; white-space: pre-wrap;
+    word-break: break-all; border: 1px solid var(--border);
+  }
+  .log-status { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
   .modal-backdrop.show .modal { transform: scale(1); }
   .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;}
   .modal-header h3 { font-size: 16px; font-weight: 600; }
@@ -403,6 +410,22 @@
   </div>
 </div>
 
+<div id="log-modal" class="modal-backdrop">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3>Pipeline Log</h3>
+      <button class="close-btn" onclick="closeLogModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="log-output">Waiting for output...</div>
+      <div class="log-status" id="log-status">Polling for updates...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeLogModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── Theme State ──
 // Default to dark mode. If the user toggles, we switch CSS vars.
@@ -493,27 +516,58 @@ async function saveSettings() {
     alert("Settings saved successfully. Pipeline will use updated config.");
   } catch(e) { alert("Failed to save settings: " + e.message); }
 }
+let logPollTimer = null;
+let currentLogName = null;
+
 async function triggerPipeline() {
   const title = document.getElementById('new-item-title').value.trim();
   const description = document.getElementById('new-item-desc').value.trim();
   if (!title && !description) { alert('Please enter a title or description.'); return; }
+  const btn = document.querySelector('#new-idea-modal .btn-primary');
   try {
-    const btn = document.querySelector('#new-idea-modal .btn-primary');
-    btn.textContent = 'Starting…';
+    btn.textContent = 'Starting...';
     btn.disabled = true;
     const result = await postJSON('/api/trigger', { title, description });
     closeModal('new-idea-modal');
     document.getElementById('new-item-title').value = '';
     document.getElementById('new-item-desc').value = '';
-    const logName = result.logFile ? result.logFile.split(/[\\/]/).pop() : null;
-    const logMsg = logName ? `\n\nLog: http://localhost:7842/api/logs/${logName}` : '';
-    alert('Pipeline started! The feature will appear in the sidebar within a few seconds.' + logMsg);
+    currentLogName = result.logFile ? result.logFile.split(/[\\/]/).pop() : null;
+    openLogModal();
     poll();
   } catch(e) {
     alert('Failed to start pipeline: ' + e.message);
   } finally {
-    const btn = document.querySelector('#new-idea-modal .btn-primary');
-    if (btn) { btn.textContent = 'Execute Brainstorm'; btn.disabled = false; }
+    btn.textContent = 'Execute Brainstorm';
+    btn.disabled = false;
+  }
+}
+
+function openLogModal() {
+  document.getElementById('log-output').textContent = 'Waiting for output...';
+  document.getElementById('log-status').textContent = 'Polling every 2s...';
+  document.getElementById('log-modal').classList.add('show');
+  if (logPollTimer) clearInterval(logPollTimer);
+  logPollTimer = setInterval(refreshLog, 2000);
+  refreshLog();
+}
+
+function closeLogModal() {
+  document.getElementById('log-modal').classList.remove('show');
+  if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
+}
+
+async function refreshLog() {
+  if (!currentLogName) return;
+  try {
+    const res = await fetch('/api/logs/' + currentLogName);
+    if (!res.ok) { document.getElementById('log-status').textContent = 'Log not ready yet...'; return; }
+    const text = await res.text();
+    const el = document.getElementById('log-output');
+    el.textContent = text || '(no output yet)';
+    el.scrollTop = el.scrollHeight;
+    document.getElementById('log-status').textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+  } catch(e) {
+    document.getElementById('log-status').textContent = 'Error reading log: ' + e.message;
   }
 }
 
