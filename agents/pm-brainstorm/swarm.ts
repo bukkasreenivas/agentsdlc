@@ -261,6 +261,9 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
     const round = await runBrainstormAgent(agent, state, codeContext, rounds, strategyContext, supplementaryData);
     rounds.push(round);
     
+    console.log(`  [PM] ${agent.label} Score: ${round.fit_score}/10`);
+    console.log(`  [PM] ${agent.label} Insight: "${round.perspective.substring(0, 150)}..."`);
+    
     // PROGRESS SYNC: Update UI after each agent finishes
     const tempContent: PMBrainstormDeliverable = {
       feature_id,
