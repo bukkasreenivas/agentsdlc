@@ -328,6 +328,14 @@ async function handleRequest(
     return;
   }
 
+  // ── POST /api/upload ────────────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/upload") {
+    const form = new formidable.IncomingForm({
+      uploadDir:      path.join(path.resolve(__dirname, ".."), "memory", "uploads"),
+      keepExtensions: true,
+      maxFileSize:    10 * 1024 * 1024, // 10MB
+    });
+
     if (!fs.existsSync(form.uploadDir)) fs.mkdirSync(form.uploadDir, { recursive: true });
 
     form.parse(req, (err, fields, files) => {
