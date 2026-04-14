@@ -7,242 +7,315 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:        #080a11;
-    --surface:   rgba(255, 255, 255, 0.03);
-    --surface-hover: rgba(255, 255, 255, 0.07);
-    --border:    rgba(255, 255, 255, 0.08);
-    --accent:    #00e6ff;
-    --accent-glow: rgba(0, 230, 255, 0.2);
-    --green:     #10b981;
-    --red:       #ef4444;
-    --yellow:    #f59e0b;
-    --text:      #f8fafc;
-    --muted:     #94a3b8;
-    --card:      rgba(20, 23, 38, 0.6);
-    --glass:     backdrop-filter: blur(10px);
+    /* Light Theme (Default) */
+    --bg:            #f8fafc;
+    --surface:       #ffffff;
+    --surface-hover: #f1f5f9;
+    --border:        #e2e8f0;
+    --accent:        #6366f1; /* Indigo */
+    --accent-glow:   rgba(99, 102, 241, 0.15);
+    --green:         #10b981;
+    --red:           #ef4444;
+    --yellow:        #f59e0b;
+    --text:          #0f172a;
+    --text-muted:    #64748b;
+    --card:          #ffffff;
+    --shadow:        0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+    --header-bg:     rgba(255, 255, 255, 0.85);
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  [data-theme="dark"] {
+    --bg:            #09090b; /* Zinc 950 */
+    --surface:       #18181b; /* Zinc 900 */
+    --surface-hover: #27272a;
+    --border:        #27272a;
+    --accent:        #8b5cf6; /* Violet */
+    --accent-glow:   rgba(139, 92, 246, 0.25);
+    --green:         #10b981;
+    --red:           #ef4444;
+    --yellow:        #f59e0b;
+    --text:          #fafafa;
+    --text-muted:    #a1a1aa;
+    --card:          #18181b;
+    --shadow:        0 10px 15px -3px rgba(0,0,0,0.6);
+    --header-bg:     rgba(24, 24, 27, 0.85);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
   body { 
-    font-family: 'Outfit', system-ui, sans-serif; 
-    background: radial-gradient(circle at 50% -20%, #171b30, var(--bg) 60%);
+    background: var(--bg);
     color: var(--text); 
     display: flex; 
     flex-direction: column;
     height: 100vh; 
     overflow: hidden; 
+    transition: background 0.3s, color 0.3s;
   }
 
   /* ── Header ── */
   header {
-    height: 60px;
+    height: 64px;
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 24px;
-    background: var(--surface);
+    background: var(--header-bg);
     backdrop-filter: blur(12px);
     z-index: 10;
   }
-  .logo { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: 0.03em; display: flex; align-items: center; gap: 8px;}
-  .logo span { color: var(--accent); }
-  .new-btn {
+  .logo { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px;}
+  .logo-icon { width: 24px; height: 24px; color: var(--accent); }
+  
+  .header-actions { display: flex; align-items: center; gap: 16px; }
+  .icon-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .icon-btn:hover { background: var(--surface-hover); color: var(--text); }
+  
+  .btn-primary {
     background: var(--accent);
-    color: #000;
+    color: #ffffff;
     border: none;
-    padding: 8px 16px;
-    border-radius: 6px;
+    padding: 0 16px;
+    height: 36px;
+    border-radius: 8px;
     font-weight: 600;
     font-size: 13px;
     cursor: pointer;
     transition: all 0.2s;
-    box-shadow: 0 0 10px var(--accent-glow);
+    box-shadow: 0 2px 10px var(--accent-glow);
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
-  .new-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 15px var(--accent-glow); }
+  .btn-primary:hover { filter: brightness(1.1); box-shadow: 0 4px 15px var(--accent-glow); transform: translateY(-1px); }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 0 16px;
+    height: 36px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { background: var(--surface-hover); }
 
   /* ── Layout ── */
-  #app-body {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
+  #app-body { display: flex; flex: 1; overflow: hidden; }
 
   /* ── Sidebar ── */
   #sidebar { 
-    width: 300px; 
-    background: rgba(10, 12, 18, 0.5); 
+    width: 280px; 
+    background: var(--surface); 
     border-right: 1px solid var(--border); 
     display: flex; 
     flex-direction: column; 
-    backdrop-filter: blur(8px);
+    z-index: 5;
   }
-  
+  .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); }
   .mode-toggle {
     display: flex;
-    margin: 16px;
-    background: rgba(0,0,0,0.4);
+    background: var(--bg);
     border-radius: 8px;
     border: 1px solid var(--border);
     padding: 4px;
   }
   .mode-btn {
-    flex: 1;
-    padding: 8px 0;
-    text-align: center;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    border-radius: 6px;
-    color: var(--muted);
-    transition: all 0.2s;
+    flex: 1; padding: 6px 0; text-align: center; font-size: 12px; font-weight: 600;
+    cursor: pointer; border-radius: 6px; color: var(--text-muted); transition: all 0.2s;
   }
-  .mode-btn.active {
-    background: var(--surface-hover);
-    color: var(--text);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-  }
+  .mode-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 
-  #feature-list { flex: 1; overflow-y: auto; padding-bottom: 20px;}
+  #feature-list { flex: 1; overflow-y: auto; padding: 8px 0; }
   .feature-item { 
-    padding: 14px 16px; 
-    cursor: pointer; 
-    border-bottom: 1px solid var(--border); 
-    transition: background 0.15s; 
-    border-left: 3px solid transparent;
+    padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border); 
+    transition: background 0.15s; border-left: 3px solid transparent;
   }
   .feature-item:hover { background: var(--surface-hover); }
-  .feature-item.active { background: var(--surface); border-left-color: var(--accent); }
+  .feature-item.active { background: var(--surface-hover); border-left-color: var(--accent); }
   .feature-item .title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;}
-  .feature-item .meta  { font-size: 11px; color: var(--muted); }
+  .feature-item .meta  { font-size: 11px; color: var(--text-muted); }
   
-  .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.05em;}
-  .badge-running   { background: rgba(0, 230, 255, 0.1); color: var(--accent); border: 1px solid rgba(0,230,255,0.2);}
-  .badge-done      { background: rgba(16, 185, 129, 0.1); color: var(--green); border: 1px solid rgba(16,185,129,0.2);}
-  .badge-escalated { background: rgba(239, 68, 68, 0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2);}
-  .badge-pending   { background: rgba(245, 158, 11, 0.15); color: var(--yellow); border: 1px solid rgba(245,158,11,0.3);}
+  .badge { display: inline-flex; align-items: center; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.05em;}
+  .badge-running   { background: rgba(99, 102, 241, 0.1); color: var(--accent); }
+  .badge-done      { background: rgba(16, 185, 129, 0.1); color: var(--green); }
+  .badge-escalated { background: rgba(239, 68, 68, 0.1); color: var(--red); }
+  .badge-pending   { background: rgba(245, 158, 11, 0.15); color: var(--yellow); }
 
   /* ── Main content ── */
-  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; background: var(--bg); }
   
-  #main-header { 
-    padding: 24px 32px; 
-    border-bottom: 1px solid var(--border); 
-    background: linear-gradient(180deg, rgba(20,23,38,0.8) 0%, rgba(10,12,18,0.4) 100%);
+  #main-header { padding: 24px 32px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  #main-header h2 { font-size: 22px; font-weight: 600; margin-bottom: 6px; letter-spacing: -0.02em;}
+  #main-header .meta { font-size: 13px; color: var(--text-muted); }
+
+  /* ── Workflow Visualizer ── */
+  #workflow-vis {
+    display: flex;
+    align-items: center;
+    padding: 16px 32px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    white-space: nowrap;
+    gap: 8px;
   }
-  #main-header h2 { font-size: 20px; font-weight: 600; margin-bottom: 6px;}
-  #main-header .meta { font-size: 13px; color: var(--muted); }
+  .wf-node {
+    display: inline-flex; flex-direction: column; align-items: center; gap: 6px; position: relative; min-width: 70px;
+  }
+  .wf-circle {
+    width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border); 
+    display: flex; align-items: center; justify-content: center; background: var(--surface);
+    font-size: 11px; font-weight: 700; color: var(--text-muted); transition: all 0.3s; z-index: 2;
+  }
+  .wf-label { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .wf-line { position: absolute; top: 14px; left: 50%; width: 100%; height: 2px; background: var(--border); z-index: 1; }
+  
+  .wf-node.completed .wf-circle { border-color: var(--green); background: var(--green); color: #fff; }
+  .wf-node.completed .wf-line { background: var(--green); }
+  .wf-node.completed .wf-label { color: var(--text); }
+  
+  .wf-node.active .wf-circle { border-color: var(--accent); color: var(--accent); border-width: 3px; box-shadow: 0 0 10px var(--accent-glow); }
+  .wf-node.active .wf-label { color: var(--accent); }
+  .wf-node.pending-gate .wf-circle { border-color: var(--yellow); color: var(--yellow); animation: pulse-yellow 2s infinite; }
 
   /* ── Tabs ── */
-  #tabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border); padding: 16px 32px; background: rgba(10,12,18,0.5); }
+  #tabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border); padding: 16px 32px; background: var(--bg); }
   .tab { 
-    padding: 8px 16px; 
-    font-size: 12px; 
-    font-weight: 500; 
-    cursor: pointer; 
-    border-radius: 6px; 
-    color: var(--muted); 
-    transition: all 0.2s; 
-    background: var(--surface);
-    border: 1px solid var(--border);
+    padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-radius: 20px; 
+    color: var(--text-muted); transition: all 0.2s; background: transparent; border: 1px solid transparent;
   }
   .tab:hover { color: var(--text); background: var(--surface-hover); }
-  .tab.active { color: var(--accent); background: rgba(0,230,255,0.05); border-color: rgba(0,230,255,0.3); }
-  .tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--yellow); margin-left: 6px; box-shadow: 0 0 6px var(--yellow); }
+  .tab.active { color: var(--accent); background: var(--accent-glow); border-color: transparent; }
+  .tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--yellow); margin-left: 6px; vertical-align: middle;}
 
   /* ── Content Area ── */
-  #content { flex: 1; overflow-y: auto; padding: 32px; padding-bottom: 120px; } /* extra padding for sticking panel */
-  .empty { text-align: center; color: var(--muted); margin-top: 100px; font-size: 15px; }
+  #content { flex: 1; overflow-y: auto; padding: 32px; padding-bottom: 120px; }
+  .empty { text-align: center; color: var(--text-muted); margin-top: 100px; font-size: 15px; }
 
   /* ── Cards ── */
   .card { 
-    background: var(--card); 
-    border: 1px solid var(--border); 
-    border-radius: 12px; 
-    padding: 24px; 
-    margin-bottom: 24px; 
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
-    backdrop-filter: blur(10px);
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px; 
+    padding: 24px; margin-bottom: 24px; box-shadow: var(--shadow);
   }
-  .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--accent); }
-  .card p, .card li { font-size: 13px; color: var(--text); line-height: 1.6; margin-bottom: 6px;}
+  .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+  .card p, .card li { font-size: 14px; color: var(--text-muted); line-height: 1.6; margin-bottom: 8px;}
 
-  /* PM memo markdown */
-  .pm-memo { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 32px; line-height: 1.6;}
-  .pm-memo h1 { font-size: 20px; margin-bottom: 16px; font-weight: 600;}
-  .pm-memo h2 { font-size: 16px; margin: 24px 0 12px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px;}
-  .pm-memo h3 { font-size: 14px; margin: 16px 0 8px; color: #f1f5f9; }
-  .pm-memo p  { font-size: 14px; color: #cbd5e1; margin-bottom: 12px; }
-  .pm-memo ul, .pm-memo ol { padding-left: 24px; margin-bottom: 12px; }
-  .pm-memo li { font-size: 14px; color: #cbd5e1; margin-bottom: 6px;}
-  .pm-memo code { background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; color: #e2e8f0;}
+  /* Markdown Rendering */
+  .markdown-body { color: var(--text); font-size: 14px; line-height: 1.7; }
+  .markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 600; margin-top: 24px; margin-bottom: 12px; color: var(--text); }
+  .markdown-body h1 { font-size: 20px; }
+  .markdown-body h2 { font-size: 16px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .markdown-body h3 { font-size: 14px; }
+  .markdown-body p, .markdown-body ul, .markdown-body ol { margin-bottom: 16px; color: var(--text-muted); }
+  .markdown-body ul { padding-left: 24px; }
+  .markdown-body code { background: var(--surface-hover); padding: 3px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; color: var(--text); border: 1px solid var(--border);}
+  .markdown-body pre { background: #0f172a; padding: 16px; border-radius: 8px; margin-bottom: 16px; overflow-x: auto; }
+  .markdown-body pre code { background: transparent; padding: 0; color: #f8fafc; border: none; }
 
-  /* Approval panel (Fixed at bottom) */
+  /* Floating Approval Panel */
   #approval-panel { 
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    border-top: 1px solid rgba(245, 158, 11, 0.3); 
-    background: rgba(20, 23, 38, 0.95); 
-    backdrop-filter: blur(12px);
-    padding: 20px 32px; 
-    box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
-    z-index: 100;
+    position: absolute; bottom: 0; left: 0; right: 0; 
+    border-top: 1px solid var(--border); 
+    background: var(--header-bg); backdrop-filter: blur(16px);
+    padding: 20px 32px; box-shadow: 0 -10px 30px rgba(0,0,0,0.05); z-index: 100;
   }
+  [data-theme="dark"] #approval-panel { box-shadow: 0 -10px 30px rgba(0,0,0,0.4); border-top-color: rgba(245, 158, 11, 0.3); }
+  
   #approval-panel .gate-label { font-size: 12px; font-weight: 700; color: var(--yellow); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;}
-  .gate-label .pulsing-dot { width: 8px; height: 8px; background: var(--yellow); border-radius: 50%; opacity: 1; animation: pulse 1.5s infinite; }
+  .gate-label .pulsing-dot { width: 8px; height: 8px; background: var(--yellow); border-radius: 50%; animation: pulse-yellow 1.5s infinite; }
   #approval-panel .row { display: flex; gap: 16px; align-items: flex-start; }
   #approval-panel textarea { 
-    flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text); resize: none; height: 60px; font-family: inherit; transition: border 0.2s;
+    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; 
+    font-size: 13px; color: var(--text); resize: none; height: 60px; font-family: inherit; transition: border 0.2s;
   }
   #approval-panel textarea:focus { outline: none; border-color: var(--accent); }
-  .btn { padding: 0 24px; height: 60px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center;}
-  .btn:hover { transform: translateY(-2px); }
-  .btn-approve { background: var(--green); color: #000; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);}
-  .btn-reject  { background: var(--red); color: #fff; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.2);}
-  
-  /* Modal */
-  #modal-backdrop {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 999;
-    align-items: center; justify-content: center;
-  }
-  .modal {
-    background: var(--card); border: 1px solid var(--border); border-radius: 12px; width: 600px; max-width: 90vw;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.5); overflow: hidden;
-  }
-  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;}
-  .modal-header h3 { font-size: 18px; }
-  .close-btn { cursor: pointer; color: var(--muted); background: none; border: none; font-size: 20px;}
-  .modal-body { padding: 24px; }
-  .input-label { font-size: 13px; color: var(--muted); margin-bottom: 8px; display: block; font-weight: 500;}
-  .modal-input { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text); margin-bottom: 20px; font-family: inherit; font-size: 14px;}
-  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px;}
 
-  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); } 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); } }
+  /* Modals */
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 999;
+    align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s;
+  }
+  .modal-backdrop.show { opacity: 1; display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 500px; max-width: 90vw;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); overflow: hidden; transform: scale(0.95); transition: transform 0.2s;
+  }
+  .modal-backdrop.show .modal { transform: scale(1); }
+  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;}
+  .modal-header h3 { font-size: 16px; font-weight: 600; }
+  .close-btn { cursor: pointer; color: var(--text-muted); background: none; border: none; font-size: 24px; line-height: 1;}
+  .close-btn:hover { color: var(--text); }
+  .modal-body { padding: 24px; }
+  .input-label { font-size: 13px; color: var(--text); margin-bottom: 8px; display: block; font-weight: 500;}
+  .modal-input { 
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; 
+    color: var(--text); margin-bottom: 20px; font-family: inherit; font-size: 14px; transition: border 0.2s;
+  }
+  .modal-input:focus { outline: none; border-color: var(--accent); }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; background: var(--bg);}
+
+  @keyframes pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); } 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); } }
 </style>
 </head>
-<body>
+<body data-theme="dark"> <!-- Defaulting to Dark Mode, user can toggle -->
 
+<!-- ── Header ── -->
 <header>
   <div class="logo">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-    AgentSDLC <span>PM</span>
+    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    AgentSDLC <span>Workspace</span>
   </div>
-  <button class="new-btn" onclick="openNewModal()">+ New Idea</button>
+  <div class="header-actions">
+    <!-- Theme Toggle -->
+    <button class="icon-btn" onclick="toggleTheme()" title="Toggle Theme">
+      <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <!-- Default: Moon icon -->
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+    </button>
+    <!-- Settings Toggle -->
+    <button class="icon-btn" onclick="openModal('settings-modal')" title="Settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+    <button class="btn-primary" onclick="openModal('new-idea-modal')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      New Idea
+    </button>
+  </div>
 </header>
 
 <div id="app-body">
   <!-- ── Sidebar ── -->
   <aside id="sidebar">
-    <div class="mode-toggle">
-      <div class="mode-btn active" id="mode-ideas" onclick="setMode('ideas')">Ideas (Discovery)</div>
-      <div class="mode-btn" id="mode-features" onclick="setMode('features')">Execution</div>
+    <div class="sidebar-header">
+      <div class="mode-toggle">
+        <div class="mode-btn active" id="mode-ideas" onclick="setMode('ideas')">Ideas</div>
+        <div class="mode-btn" id="mode-features" onclick="setMode('features')">Execution</div>
+      </div>
     </div>
     <div id="feature-list">
-      <div style="padding:20px;text-align:center;color:var(--muted)">Loading...</div>
+      <div class="empty" style="margin-top: 40px; font-size: 13px;">Loading projects...</div>
     </div>
   </aside>
 
@@ -252,50 +325,102 @@
       <h2 id="feature-title">—</h2>
       <div class="meta" id="feature-meta">—</div>
     </div>
+    
+    <!-- Workflow Visualizer -->
+    <div id="workflow-vis" style="display:none">
+      <!-- Injected via JS -->
+    </div>
+
+    <!-- Tab Navigation -->
     <div id="tabs" style="display:none"></div>
+    
+    <!-- Content Parsing -->
     <div id="content">
       <div class="empty">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.2;margin-bottom:16px;">
-          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:16px;">
+          <circle cx="12" cy="12" r="10"></circle><polyline points="12 16 16 12 12 8"></polyline><line x1="8" y1="12" x2="16" y2="12"></line>
         </svg>
-        <p>Select an item to view insights and execution details.</p>
+        <p>Select an item from the sidebar to view details and approve gates.</p>
       </div>
     </div>
     
     <!-- Floating Approval Panel -->
     <div id="approval-panel" style="display:none">
-      <div class="gate-label" id="gate-label"><span class="pulsing-dot"></span> Awaiting Approval</div>
+      <div class="gate-label" id="gate-label"><span class="pulsing-dot"></span> Manual Approval Required</div>
       <div class="row">
         <textarea id="comment-box" placeholder="Feedback or rejection reason (required for rejection)..."></textarea>
-        <button class="btn btn-approve" id="btn-approve">Approve</button>
-        <button class="btn btn-reject"  id="btn-reject">Reject</button>
+        <button class="btn btn-approve" id="btn-approve" onclick="submitApproval(true)">Approve & Proceed</button>
+        <button class="btn btn-secondary" id="btn-reject" onclick="submitApproval(false)" style="height:60px">Reject & Revise</button>
       </div>
     </div>
   </main>
 </div>
 
-<!-- Modal -->
-<div id="modal-backdrop">
+<!-- ── Modals ── -->
+
+<!-- Settings Modal -->
+<div id="settings-modal" class="modal-backdrop">
   <div class="modal">
     <div class="modal-header">
-      <h3>Submit New Idea</h3>
-      <button class="close-btn" onclick="closeModal()">×</button>
+      <h3>Workspace Settings</h3>
+      <button class="close-btn" onclick="closeModal('settings-modal')">×</button>
     </div>
     <div class="modal-body">
-      <label class="input-label">Feature Title</label>
-      <input type="text" id="new-item-title" class="modal-input" placeholder="e.g. AI Synthesizer">
+      <label class="input-label">Project Git URL</label>
+      <input type="text" id="set-git-url" class="modal-input" placeholder="e.g. https://github.com/org/repo.git">
       
-      <label class="input-label">Description or Customer Notes (Raw)</label>
-      <textarea id="new-item-desc" class="modal-input" style="height: 120px; resize: none;" placeholder="Paste customer feedback, meeting transcripts, or rough ideas here..."></textarea>
+      <label class="input-label">Host Project Path (Local Fallback)</label>
+      <input type="text" id="set-host-path" class="modal-input" placeholder="e.g. .. or /path/to/project">
+      
+      <label class="input-label">Jira Project Key</label>
+      <input type="text" id="set-jira-key" class="modal-input" placeholder="e.g. PROJ">
     </div>
     <div class="modal-footer">
-      <button class="btn" style="background:transparent; color:var(--text); height:40px" onclick="closeModal()">Cancel</button>
-      <button class="new-btn" style="height:40px" onclick="triggerPipeline()">Run AI Discovery</button>
+      <button class="btn-secondary" onclick="closeModal('settings-modal')">Cancel</button>
+      <button class="btn-primary" onclick="saveSettings()">Save & Sync</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Idea Modal -->
+<div id="new-idea-modal" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Submit New Idea (Discovery)</h3>
+      <button class="close-btn" onclick="closeModal('new-idea-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <label class="input-label">Feature/Idea Title</label>
+      <input type="text" id="new-item-title" class="modal-input" placeholder="e.g. AI Workflow Synthesizer">
+      
+      <label class="input-label">Customer Feedback & Requirements (Raw)</label>
+      <textarea id="new-item-desc" class="modal-input" style="height: 120px; resize: none;" placeholder="Paste unstructured customer feedback, meeting transcripts, or rough ideas here..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('new-idea-modal')">Cancel</button>
+      <button class="btn-primary" onclick="triggerPipeline()">Execute Brainstorm</button>
     </div>
   </div>
 </div>
 
 <script>
+// ── Theme State ──
+// Default to dark mode. If the user toggles, we switch CSS vars.
+function toggleTheme() {
+  const body = document.body;
+  const current = body.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  body.setAttribute('data-theme', next);
+  
+  const icon = document.getElementById('theme-icon');
+  if (next === 'dark') {
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>'; // Moon
+  } else {
+    icon.innerHTML = '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>'; // Sun
+  }
+}
+
+// ── App State ──
 let currentMode   = 'ideas'; // 'ideas' | 'features'
 let listItems     = [];
 let pendingGates  = [];
@@ -303,29 +428,84 @@ let selectedId    = null;
 let selectedStage = null;
 let itemData      = {};
 
-// ── API helpers ────────────────────────────────────────────────────────────
+// ── The Pipeline Order for Visualizer ──
+const PIPELINE_NODES = [
+  { id: 'pm_brainstorm', label: 'PM' },
+  { id: 'po', label: 'PO' },
+  { id: 'design', label: 'Design' },
+  { id: 'architect', label: 'Arch' },
+  { id: 'dev_swarm', label: 'Dev' },
+  { id: 'nfr', label: 'Safety' },
+  { id: 'review', label: 'PR' },
+  { id: 'cicd', label: 'CI/CD' },
+  { id: 'qa', label: 'QA' }
+];
+
+const TAB_NAMES = {
+  pm_brainstorm: 'PM Synthesis',
+  po: 'Engineering Stories',
+  design: 'UX/UI Design',
+  architect: 'Architecture',
+  dev_swarm: 'Implementation',
+  nfr: 'Security & NFR',
+  review: 'Pull Request Review',
+  cicd: 'CI/CD Status',
+  qa: 'QA Testing'
+};
+
+// ── API helpers ──
 async function api(path) {
   const res = await fetch(path);
   if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
 }
 async function postJSON(path, body) {
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
 }
 
-// ── UI Logic ───────────────────────────────────────────────────────────────
+// ── Modal Logic ──
+async function openModal(id) {
+  document.getElementById(id).classList.add('show');
+  if (id === 'settings-modal') {
+    // Fetch and populate settings
+    try {
+      const s = await api('/api/settings');
+      document.getElementById('set-git-url').value = s.project_git_url || '';
+      document.getElementById('set-host-path').value = s.host_project_path || '';
+      document.getElementById('set-jira-key').value = s.jira_project_key || '';
+    } catch(e) { console.error('Failed to load settings', e); }
+  }
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+async function saveSettings() {
+  const payload = {
+    project_git_url: document.getElementById('set-git-url').value.trim(),
+    host_project_path: document.getElementById('set-host-path').value.trim(),
+    jira_project_key: document.getElementById('set-jira-key').value.trim()
+  };
+  try {
+    await postJSON('/api/settings', payload);
+    closeModal('settings-modal');
+    alert("Settings saved successfully. Pipeline will use updated config.");
+  } catch(e) { alert("Failed to save settings: " + e.message); }
+}
+function triggerPipeline() {
+  alert("In production, this posts to /api/trigger to spawn the LangGraph process.\nFor now, run: `npm run pipeline:idea`.");
+  closeModal('new-idea-modal');
+}
+
+// ── List & Navigation ──
 function setMode(mode) {
   currentMode = mode;
   document.getElementById('mode-ideas').className = `mode-btn ${mode === 'ideas' ? 'active' : ''}`;
   document.getElementById('mode-features').className = `mode-btn ${mode === 'features' ? 'active' : ''}`;
   selectedId = null;
   document.getElementById('main-header').style.display = 'none';
+  document.getElementById('workflow-vis').style.display = 'none';
   document.getElementById('tabs').style.display = 'none';
   document.getElementById('content').innerHTML = '<div class="empty">Select an item from the sidebar to view details.</div>';
   hideApprovalPanel();
@@ -334,10 +514,7 @@ function setMode(mode) {
 
 async function poll() {
   try {
-    const [fetchedItems, newPending] = await Promise.all([
-      api(`/api/${currentMode}`),
-      api('/api/pending')
-    ]);
+    const [fetchedItems, newPending] = await Promise.all([ api(`/api/${currentMode}`), api('/api/pending') ]);
     listItems = fetchedItems;
     pendingGates = newPending;
     renderSidebar();
@@ -346,9 +523,9 @@ async function poll() {
       const gate = pendingGates.find(g => g.featureId === selectedId);
       if (gate) {
         if (gate.stage !== selectedStage && itemData?.manifest?.stages?.includes(gate.stage)) {
-          selectedStage = gate.stage;
-          renderTabs();
-          renderContent();
+           // We might want to switch tabs if a new gate appears
+           selectedStage = gate.stage;
+           renderTabs(); renderContent(); renderWorkflowVis();
         }
         showApprovalPanel(gate);
       } else {
@@ -356,27 +533,22 @@ async function poll() {
       }
     }
   } catch (e) {
-    console.warn('Poll failed:', e);
+    console.warn('Poll failed:', e.message);
   }
 }
 
 function renderSidebar() {
   const list = document.getElementById('feature-list');
   if (!listItems.length) {
-    list.innerHTML = `<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">No ${currentMode} found.</div>`;
+    list.innerHTML = `<div class="empty" style="margin-top: 40px; font-size: 13px;">No ${currentMode} found.</div>`;
     return;
   }
   list.innerHTML = listItems.map(f => {
     const hasPending = pendingGates.some(g => g.featureId === f.featureId);
     let st = f.status || 'running';
-    if(hasPending) st = 'pending_gate';
-    const badgeClass = {
-      'pending_gate': 'badge-pending',
-      'done': 'badge-done',
-      'escalated': 'badge-escalated',
-      'running': 'badge-running'
-    }[st];
-    const lbl = hasPending ? 'Action Req' : st;
+    if (hasPending) st = 'pending_gate';
+    const badgeClass = { 'pending_gate': 'badge-pending', 'done': 'badge-done', 'escalated': 'badge-escalated', 'running': 'badge-running' }[st];
+    const lbl = hasPending ? 'Action Required' : st;
     const date = new Date(f.startedAt).toLocaleDateString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
     
     return `<div class="feature-item ${f.featureId === selectedId ? 'active' : ''}" onclick="selectItem('${f.featureId}', '${f.storeType || currentMode}')">
@@ -390,9 +562,10 @@ function renderSidebar() {
 async function selectItem(id, type) {
   selectedId = id;
   selectedStage = null;
-  document.getElementById('content').innerHTML = '<div class="empty">Loading...</div>';
-  document.getElementById('main-header').style.display = '';
-  document.getElementById('tabs').style.display = '';
+  document.getElementById('content').innerHTML = '<div class="empty">Loading document data...</div>';
+  document.getElementById('main-header').style.display = 'block';
+  document.getElementById('workflow-vis').style.display = 'flex';
+  document.getElementById('tabs').style.display = 'flex';
   hideApprovalPanel();
   renderSidebar();
 
@@ -401,11 +574,12 @@ async function selectItem(id, type) {
     const m = itemData.manifest;
     document.getElementById('feature-title').textContent = m.featureTitle;
     document.getElementById('feature-meta').textContent = 
-      `Status: ${m.status.toUpperCase()}  |  Requested By: ${m.requestedBy?.substring(0,12)}  |  Updated: ${new Date(m.updatedAt).toLocaleString()}`;
+      `ID: ${m.featureId}  •  Status: ${m.status.toUpperCase()}  •  Requested By: ${m.requestedBy?.substring(0,15)}  •  Updated: ${new Date(m.updatedAt).toLocaleString()}`;
     
     const gate = pendingGates.find(g => g.featureId === id);
     selectedStage = gate?.stage ?? m.stages?.[m.stages.length - 1] ?? 'pm_brainstorm';
     
+    renderWorkflowVis();
     renderTabs();
     renderContent();
     if(gate) showApprovalPanel(gate);
@@ -414,16 +588,40 @@ async function selectItem(id, type) {
   }
 }
 
-const TAB_NAMES = {
-  pm_brainstorm: 'AI Synthesis',
-  po: 'Engineering Sync',
-  design: 'UI Design',
-  architect: 'Architecture',
-  dev_swarm: 'Code Implementation',
-  review: 'Pull Request',
-  cicd: 'Deployment',
-  qa: 'QA Testing'
-};
+// ── Rendering ──
+function renderWorkflowVis() {
+  const m = itemData.manifest;
+  if (!m) return;
+  const stages = m.stages || [];
+  const curr = m.currentStage;
+  const gate = pendingGates.find(g => g.featureId === selectedId);
+
+  let html = '';
+  for (let i = 0; i < PIPELINE_NODES.length; i++) {
+    const node = PIPELINE_NODES[i];
+    
+    let stateClass = '';
+    let icon = '•'; // default
+    if (stages.includes(node.id)) {
+      stateClass = 'completed'; icon = '✓';
+    }
+    if (curr === node.id || (gate && gate.stage === node.id)) {
+      // Active trumps completed
+      stateClass = gate ? 'pending-gate' : 'active';
+      if (gate) icon = '!'; else icon = '→';
+    }
+
+    const hasNext = i < PIPELINE_NODES.length - 1;
+    html += `
+      <div class="wf-node ${stateClass}" onclick="if('${stateClass}'){selectTab('${node.id}')}" style="cursor:${stateClass ? 'pointer':'default'}">
+        <div class="wf-circle">${icon}</div>
+        <div class="wf-label">${node.label}</div>
+        ${hasNext ? '<div class="wf-line"></div>' : ''}
+      </div>
+    `;
+  }
+  document.getElementById('workflow-vis').innerHTML = html;
+}
 
 function renderTabs() {
   const m = itemData.manifest;
@@ -432,12 +630,13 @@ function renderTabs() {
   
   document.getElementById('tabs').innerHTML = stages.map(s => {
     const active = s === selectedStage ? 'active' : '';
-    const pending = gate?.stage === s ? '<span class="dot"></span>' : '';
+    const pending = gate?.stage === s ? '<span class="dot" title="Action needed"></span>' : '';
     return `<div class="tab ${active}" onclick="selectTab('${s}')">${TAB_NAMES[s] || s}${pending}</div>`;
   }).join('');
 }
 
 function selectTab(stage) {
+  if (!itemData.stages?.[stage]) return; // don't open empty tabs
   selectedStage = stage;
   renderTabs();
   renderContent();
@@ -447,28 +646,55 @@ function renderContent() {
   const c = document.getElementById('content');
   if(!selectedStage || !itemData.stages) return c.innerHTML = '<div class="empty">No stage data.</div>';
   const stageData = itemData.stages[selectedStage]?.data ?? itemData.stages[selectedStage];
-  if(!stageData) return c.innerHTML = '<div class="empty">Data pending format processing...</div>';
+  if(!stageData) return c.innerHTML = '<div class="empty">Stage output in progress...</div>';
 
   if(selectedStage === 'pm_brainstorm') {
     const memo = stageData.pm_memo || stageData.consensus?.pm_memo || '';
-    const md = memo ? marked.parse(memo) : '<p>No PM memo found.</p>';
-    c.innerHTML = `<div class="pm-memo">${md}</div>
-      <div class="card" style="margin-top:20px">
-        <h3>Decision Consensus</h3>
-        <p><strong>Action:</strong> ${esc(stageData.consensus?.build_decision)}</p>
-        <p><strong>Confidence:</strong> ${esc(stageData.consensus?.confidence)}</p>
-      </div>`;
+    const md = memo ? marked.parse(memo) : '<p>No Product Requirements Document generated yet.</p>';
+    c.innerHTML = `
+      <div class="card" style="margin-bottom: 24px; display: flex; justify-content: space-between;">
+        <div>
+          <h3 style="color:var(--text-muted); font-size:12px; text-transform:uppercase; margin-bottom:4px">Decision</h3>
+          <div style="font-size:18px; font-weight:600; color:var(--accent)">${esc(stageData.consensus?.build_decision).toUpperCase()}</div>
+        </div>
+        <div>
+          <h3 style="color:var(--text-muted); font-size:12px; text-transform:uppercase; margin-bottom:4px">Confidence</h3>
+          <div style="font-size:18px; font-weight:600; color:var(--accent)">${esc(stageData.consensus?.confidence * 100)}%</div>
+        </div>
+      </div>
+      <div class="card markdown-body">${md}</div>
+    `;
+  } else if (selectedStage === 'po') {
+     const stories = stageData.user_stories || [];
+     c.innerHTML = `
+      <div class="card">
+        <h3>Epic Overview</h3>
+        <p><strong>Epic Key:</strong> ${esc(stageData.epic_key)}</p>
+        <p><strong>Summary:</strong> ${esc(stageData.epic_summary)}</p>
+      </div>
+      ${stories.map((s, i) => `
+        <div class="card">
+          <div style="font-weight:600; color:var(--accent); margin-bottom:8px">Story ${i+1}: ${esc(s.summary)}</div>
+          <p style="font-size: 13px; font-weight: 500">${esc(s.job_story)}</p>
+          <div style="margin-top: 12px; color:var(--text-muted); font-size:12px; text-transform:uppercase; font-weight:700">Acceptance Criteria</div>
+          <ul style="margin-top: 4px">
+            ${(s.acceptance_criteria || []).map(ac => `<li style="font-size:13px">${esc(ac)}</li>`).join('')}
+          </ul>
+        </div>
+      `).join('')}
+     `;
   } else {
-    // Fallback JSON renderer
-    c.innerHTML = `<div class="card"><h3>${TAB_NAMES[selectedStage] || selectedStage} JSON</h3>
-      <pre style="font-size:12px;color:var(--muted);white-space:pre-wrap">${esc(JSON.stringify(stageData, null, 2))}</pre>
+    // Generic viewer
+    c.innerHTML = `<div class="card"><h3>Raw JSON Export - ${TAB_NAMES[selectedStage] || selectedStage}</h3>
+      <pre style="font-size:13px;color:var(--text-muted);white-space:pre-wrap; margin-top:16px">${esc(JSON.stringify(stageData, null, 2))}</pre>
     </div>`;
   }
 }
 
+// ── Manual Gates ──
 function showApprovalPanel(gate) {
   document.getElementById('approval-panel').style.display = 'block';
-  document.getElementById('gate-label').innerHTML = `<span class="pulsing-dot"></span> HUMAN GATE: ${esc(gate.summary || gate.stage)}`;
+  document.getElementById('gate-label').innerHTML = `<span class="pulsing-dot"></span> HUMAN PR GATE: ${esc(gate.summary || gate.stage)}`;
   document.getElementById('btn-approve').disabled = false;
   document.getElementById('btn-reject').disabled = false;
   document.getElementById('comment-box').value = '';
@@ -479,8 +705,9 @@ function hideApprovalPanel() {
 
 async function submitApproval(approved) {
   const gate = pendingGates.find(g => g.featureId === selectedId);
+  if (!gate) return;
   const comment = document.getElementById('comment-box').value.trim();
-  if(!approved && !comment) return alert('Rejection requires a comment for the AI to amend context.');
+  if(!approved && !comment) return alert('Rejection requires feedback so the AI can correct its output.');
   
   document.getElementById('btn-approve').disabled = true;
   document.getElementById('btn-reject').disabled = true;
@@ -488,7 +715,7 @@ async function submitApproval(approved) {
   try {
     await postJSON('/api/approve', {
       featureId: selectedId,
-      type: currentMode,
+      type: itemData.manifest?.storeType || currentMode,
       stage: gate.stage,
       approved,
       comment
@@ -496,28 +723,20 @@ async function submitApproval(approved) {
     hideApprovalPanel();
     poll();
   } catch(e) {
-    alert("Error: "+e.message);
+    alert("API Error: "+e.message);
+    document.getElementById('btn-approve').disabled = false;
+    document.getElementById('btn-reject').disabled = false;
   }
 }
 
-// ── Modal ──
-function openNewModal() { document.getElementById('modal-backdrop').style.display = 'flex'; }
-function closeModal()   { document.getElementById('modal-backdrop').style.display = 'none'; }
-function triggerPipeline() {
-  // In a real app, this posts to a /api/trigger endpoint which spawns process
-  // Because backend run.ts reads argv, we could add a spawn wrap.
-  // For now, modal is purely visual as we use CLI to start, but we can fake an alert:
-  alert("Normally this would POST to spawn pipeline child process. Please use CLI `npm run pipeline:idea` with this text.");
-  closeModal();
-}
-
 function esc(s) {
-  if(!s) return '';
+  if(s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-setInterval(poll, 3000);
+// Initialize
 poll();
+setInterval(poll, 3000);
 </script>
 </body>
 </html>

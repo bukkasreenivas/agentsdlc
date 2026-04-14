@@ -170,6 +170,21 @@ async function handleRequest(
     return;
   }
 
+  // ── GET /api/settings ───────────────────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/settings") {
+    const envPath = path.resolve(__dirname, "../../.env");
+    let envContent = "";
+    if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, "utf8");
+    const settings = {
+      project_git_url:   envContent.match(/^PROJECT_GIT_URL=(.*)$/m)?.[1] ?? "",
+      host_project_path: envContent.match(/^HOST_PROJECT_PATH=(.*)$/m)?.[1] ?? "",
+      llm_provider:      envContent.match(/^LLM_PROVIDER=(.*)$/m)?.[1] ?? "",
+      jira_project_key:  envContent.match(/^JIRA_PROJECT_KEY=(.*)$/m)?.[1] ?? "",
+    };
+    json(res, settings);
+    return;
+  }
+
   // ── POST /api/approve ───────────────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/approve") {
     let body: any;
@@ -202,6 +217,32 @@ async function handleRequest(
 
     console.log(`\n  [UI] ${stage} ${verb} for ${featureId.slice(0, 8)} — "${comment ?? ""}"`);
     json(res, { ok: true, record: rec });
+    return;
+  }
+
+  // ── POST /api/settings ──────────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/settings") {
+    let body: any;
+    try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
+    
+    const envPath = path.resolve(__dirname, "../../.env");
+    let envContent = "";
+    if (fs.existsSync(envPath)) envContent = fs.readFileSync(envPath, "utf8");
+    
+    // Update or append settings
+    for (const [k, v] of Object.entries(body)) {
+      const key = k.toUpperCase();
+      const regex = new RegExp(`^${key}=.*$`, "m");
+      if (regex.test(envContent)) {
+        envContent = envContent.replace(regex, `${key}=${v}`);
+      } else {
+        envContent += `\n${key}=${v}`;
+      }
+    }
+    
+    fs.writeFileSync(envPath, envContent, "utf8");
+    console.log(`  [UI] Updated settings: ${Object.keys(body).join(", ")}`);
+    json(res, { ok: true });
     return;
   }
 
