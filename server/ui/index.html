@@ -501,11 +501,13 @@ async function triggerPipeline() {
     const btn = document.querySelector('#new-idea-modal .btn-primary');
     btn.textContent = 'Starting…';
     btn.disabled = true;
-    await postJSON('/api/trigger', { title, description });
+    const result = await postJSON('/api/trigger', { title, description });
     closeModal('new-idea-modal');
     document.getElementById('new-item-title').value = '';
     document.getElementById('new-item-desc').value = '';
-    alert('Pipeline started! The feature will appear in the sidebar within a few seconds.');
+    const logName = result.logFile ? result.logFile.split(/[\\/]/).pop() : null;
+    const logMsg = logName ? `\n\nLog: http://localhost:7842/api/logs/${logName}` : '';
+    alert('Pipeline started! The feature will appear in the sidebar within a few seconds.' + logMsg);
     poll();
   } catch(e) {
     alert('Failed to start pipeline: ' + e.message);

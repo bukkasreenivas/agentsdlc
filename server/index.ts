@@ -244,19 +244,38 @@ async function handleRequest(
     const featureText = [title, description].filter(Boolean).join(" - ").replace(/"/g, "'");
     const agentsdlcDir = path.resolve(__dirname, "..");
 
+    // Log file — written next to the existing pipeline log
+    const logDir  = path.join(agentsdlcDir, "memory", "runtime");
+    fs.mkdirSync(logDir, { recursive: true });
+    const logFile = path.join(logDir, `pipeline-${Date.now()}.log`);
+    const logFd   = fs.openSync(logFile, "a");
+
     // Build a single command string so Windows cmd.exe quotes the feature text correctly
     const cmd = `npx ts-node orchestrator/run.ts --feature "${featureText}"`;
     const child = spawn(cmd, [], {
       cwd:      agentsdlcDir,
       detached: true,
-      stdio:    "ignore",
+      stdio:    ["ignore", logFd, logFd],
       env:      { ...process.env },
       shell:    true,
     });
     child.unref();
+    fs.closeSync(logFd);
 
-    console.log(`\n  [UI] Pipeline triggered: "${featureText.slice(0, 60)}…" (pid will detach)`);
-    json(res, { ok: true, message: "Pipeline started. Refresh the sidebar in a few seconds." });
+    console.log(`\n  [UI] Pipeline triggered: "${featureText.slice(0, 60)}..."`);
+    console.log(`  [UI] Log: ${logFile}`);
+    json(res, { ok: true, message: "Pipeline started. Refresh the sidebar in a few seconds.", logFile });
+    return;
+  }
+
+  // ── GET /api/logs/:filename ─────────────────────────────────────────────────
+  const logMatch = pathname.match(/^\/api\/logs\/([^/]+\.log)$/);
+  if (method === "GET" && logMatch) {
+    const logPath = path.join(path.resolve(__dirname, ".."), "memory", "runtime", logMatch[1]);
+    if (!fs.existsSync(logPath)) { notFound(res, "Log file not found"); return; }
+    const content = fs.readFileSync(logPath, "utf8");
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+    res.end(content);
     return;
   }
 
