@@ -493,9 +493,26 @@ async function saveSettings() {
     alert("Settings saved successfully. Pipeline will use updated config.");
   } catch(e) { alert("Failed to save settings: " + e.message); }
 }
-function triggerPipeline() {
-  alert("In production, this posts to /api/trigger to spawn the LangGraph process.\nFor now, run: `npm run pipeline:idea`.");
-  closeModal('new-idea-modal');
+async function triggerPipeline() {
+  const title = document.getElementById('new-item-title').value.trim();
+  const description = document.getElementById('new-item-desc').value.trim();
+  if (!title && !description) { alert('Please enter a title or description.'); return; }
+  try {
+    const btn = document.querySelector('#new-idea-modal .btn-primary');
+    btn.textContent = 'Starting…';
+    btn.disabled = true;
+    await postJSON('/api/trigger', { title, description });
+    closeModal('new-idea-modal');
+    document.getElementById('new-item-title').value = '';
+    document.getElementById('new-item-desc').value = '';
+    alert('Pipeline started! The feature will appear in the sidebar within a few seconds.');
+    poll();
+  } catch(e) {
+    alert('Failed to start pipeline: ' + e.message);
+  } finally {
+    const btn = document.querySelector('#new-idea-modal .btn-primary');
+    if (btn) { btn.textContent = 'Execute Brainstorm'; btn.disabled = false; }
+  }
 }
 
 // ── List & Navigation ──

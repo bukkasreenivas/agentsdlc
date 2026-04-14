@@ -17,6 +17,7 @@ import * as http  from "http";
 import * as fs    from "fs";
 import * as path  from "path";
 import * as url   from "url";
+import { spawn }  from "child_process";
 
 import {
   listFeatures,
@@ -226,6 +227,38 @@ async function handleRequest(
 
     console.log(`\n  [UI] ${stage} ${verb} for ${featureId.slice(0, 8)} — "${comment ?? ""}"`);
     json(res, { ok: true, record: rec });
+    return;
+  }
+
+  // ── POST /api/trigger ───────────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/trigger") {
+    let body: any;
+    try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
+
+    const { title, description } = body;
+    if (!title && !description) {
+      badRequest(res, "Required: title or description"); return;
+    }
+
+    const featureText = [title, description].filter(Boolean).join(" — ");
+    const agentsdlcDir = path.resolve(__dirname, "..");
+
+    // Spawn the pipeline as a detached background process
+    const child = spawn(
+      "npx",
+      ["ts-node", "orchestrator/run.ts", "--feature", featureText],
+      {
+        cwd:      agentsdlcDir,
+        detached: true,
+        stdio:    "ignore",
+        env:      { ...process.env },
+        shell:    true,
+      }
+    );
+    child.unref();
+
+    console.log(`\n  [UI] Pipeline triggered: "${featureText.slice(0, 60)}…" (pid will detach)`);
+    json(res, { ok: true, message: "Pipeline started. Refresh the sidebar in a few seconds." });
     return;
   }
 
