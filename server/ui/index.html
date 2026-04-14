@@ -665,7 +665,6 @@ function renderContent() {
       <div class="card markdown-body">${md}</div>
     `;
   } else if (selectedStage === 'po') {
-     // Data stored as { stage, data: { content: { epic_key, epic_summary, user_stories } } }
      const content = stageData.content ?? stageData;
      const stories = content.user_stories || [];
      const storyMapUrl = content.story_map_url || '';
@@ -686,27 +685,30 @@ function renderContent() {
         </div>
         ${storyMapUrl ? `<div style="align-self:center;"><a href="${esc(storyMapUrl)}" target="_blank" style="color:var(--accent); font-size:13px; font-weight:600;">View in Jira ↗</a></div>` : ''}
       </div>
-      ${stories.map((s, i) => `
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; gap:12px; flex-wrap:wrap;">
-            <div style="font-weight:600; color:var(--accent);">
-              ${s.key ? `<span style="font-size:11px; background:var(--accent-glow); padding:2px 8px; border-radius:4px; margin-right:8px;">${esc(s.key)}</span>` : ''}
-              Story ${i+1}: ${esc(s.summary)}
-            </div>
-            ${s.story_points ? `<span style="font-size:11px; color:var(--text-muted); white-space:nowrap; padding:2px 8px; border:1px solid var(--border); border-radius:4px;">${s.story_points} pts</span>` : ''}
+      ${stories.map((s, i) => {
+        const userStoryText = s.user_story || s.job_story || '';
+        const asAMatch = userStoryText.match(/^As a ([^,]+),?\s*I would like to ([^,]+),?\s*so that (.+)$/i);
+        const acItems = s.acceptance_criteria_gwt || s.acceptance_criteria || [];
+        const gwtRows = acItems.map(ac => {
+          if (typeof ac === 'object' && ac.given) {
+            return '<tr><td style="padding:10px 12px;border:1px solid var(--border);font-size:13px;vertical-align:top;width:33%">' + esc(ac.given) + '</td><td style="padding:10px 12px;border:1px solid var(--border);font-size:13px;vertical-align:top;width:33%">' + esc(ac.when) + '</td><td style="padding:10px 12px;border:1px solid var(--border);font-size:13px;vertical-align:top;width:33%">' + esc(ac.then) + '</td></tr>';
+          }
+          const parts = String(ac).split(/\s*\|\s*/);
+          if (parts.length === 3) return '<tr><td style="padding:10px 12px;border:1px solid var(--border);font-size:13px;vertical-align:top">' + esc(parts[0].replace(/^Given\s*/i,'')) + '</td><td style="padding:10px 12px;border:1px solid var(--border);font-size:13px;vertical-align:top">' + esc(parts[1].replace(/^When\s*/i,'')) + '</td><td style="padding:10px 12px;border:1px solid var(--border);font-size:13px;vertical-align:top">' + esc(parts[2].replace(/^Then\s*/i,'')) + '</td></tr>';
+          return '<tr><td colspan="3" style="padding:10px 12px;border:1px solid var(--border);font-size:13px">' + esc(ac) + '</td></tr>';
+        }).join('');
+        return `<div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap;">
+            <div>${s.key ? '<span style="font-size:11px;background:var(--accent-glow);color:var(--accent);padding:2px 8px;border-radius:4px;margin-right:8px;font-weight:700;">' + esc(s.key) + '</span>' : ''}<span style="font-weight:600;font-size:14px;">${esc(s.summary)}</span></div>
+            ${s.story_points ? '<span style="font-size:11px;color:var(--text-muted);padding:2px 10px;border:1px solid var(--border);border-radius:4px;white-space:nowrap;">' + s.story_points + ' pts</span>' : ''}
           </div>
-          <p style="font-size: 13px; font-weight: 500; color:var(--text-muted); margin-bottom:12px;">${esc(s.job_story)}</p>
-          <div style="color:var(--text-muted); font-size:11px; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Acceptance Criteria</div>
-          <ul style="margin-top: 4px; padding-left:20px; margin-bottom:12px;">
-            ${(s.acceptance_criteria || []).map(ac => `<li style="font-size:13px; margin-bottom:4px;">${esc(ac)}</li>`).join('')}
-          </ul>
-          ${(s.test_scenarios || []).length ? `
-          <div style="color:var(--text-muted); font-size:11px; text-transform:uppercase; font-weight:700; margin-bottom:6px;">Test Scenarios</div>
-          <ul style="margin-top: 4px; padding-left:20px;">
-            ${(s.test_scenarios || []).map(ts => `<li style="font-size:13px; margin-bottom:4px;">${esc(ts)}</li>`).join('')}
-          </ul>` : ''}
-        </div>
-      `).join('')}
+          <div style="background:var(--surface-hover);border-radius:8px;padding:12px 16px;margin-bottom:16px;border-left:3px solid var(--accent);">
+            ${asAMatch ? '<div style="font-size:13px;line-height:2;color:var(--text);"><span style="color:var(--text-muted);font-weight:600;">As a</span> ' + esc(asAMatch[1]) + '<br><span style="color:var(--text-muted);font-weight:600;">I would like to</span> ' + esc(asAMatch[2]) + '<br><span style="color:var(--text-muted);font-weight:600;">So that</span> ' + esc(asAMatch[3]) + '</div>' : '<p style="font-size:13px;color:var(--text-muted);">' + esc(userStoryText) + '</p>'}
+          </div>
+          ${gwtRows ? '<div style="color:var(--text-muted);font-size:11px;text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:0.05em;">Acceptance Criteria</div><div style="overflow-x:auto;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:var(--surface-hover);"><th style="padding:10px 12px;border:1px solid var(--border);font-size:12px;font-weight:700;text-align:left;color:var(--text);width:33%">Given</th><th style="padding:10px 12px;border:1px solid var(--border);font-size:12px;font-weight:700;text-align:left;color:var(--text);width:33%">When</th><th style="padding:10px 12px;border:1px solid var(--border);font-size:12px;font-weight:700;text-align:left;color:var(--text);width:33%">Then</th></tr></thead><tbody>' + gwtRows + '</tbody></table></div>' : ''}
+          ${(s.test_scenarios || []).length ? '<div style="color:var(--text-muted);font-size:11px;text-transform:uppercase;font-weight:700;margin-bottom:6px;letter-spacing:0.05em;">Test Scenarios</div><ul style="padding-left:20px;margin:0;">' + (s.test_scenarios || []).map(ts => '<li style="font-size:13px;color:var(--text-muted);margin-bottom:4px;">' + esc(ts) + '</li>').join('') + '</ul>' : ''}
+        </div>`;
+      }).join('')}
      `;
   } else {
     // Generic viewer

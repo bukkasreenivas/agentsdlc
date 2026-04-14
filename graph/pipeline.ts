@@ -352,6 +352,29 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
   }
   console.log();
 
+  const poSummary = poContent?.user_stories?.length
+    ? `${poContent.user_stories.length} stories for Epic ${poContent.epic_key ?? epicKey ?? "N/A"}`
+    : `Epic ${epicKey ?? "N/A"} — review in Jira`;
+
+  // ── ALWAYS write the pending gate file so the Web UI shows approval buttons ──
+  // This must happen before the GitHub PR branch so the UI reflects the gate
+  // regardless of which approval mechanism the human chooses.
+  writeStageData(state.feature_id, "po", state.deliverables?.po ?? poContent);
+
+  const pending: PendingGate = {
+    featureId:    state.feature_id,
+    featureTitle: state.feature_title ?? state.feature_id,
+    stage:        "po",
+    stageLabel:   "PO Story Review",
+    summary:      poSummary,
+    detail:       poContent ?? {},
+    createdAt:    new Date().toISOString(),
+    timeoutAt:    new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+  };
+  writePending(state.feature_id, "po", pending);
+
+  // If GitHub is configured, open a PR as the primary gate mechanism.
+  // The Web UI approval is a secondary path — first one wins.
   if (isGithubConfigured()) {
     const gateInfo = await openHumanGatePR({
       stage: "po", title: `[GATE] PO Review — ${state.feature_title}`,
@@ -360,38 +383,65 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
     });
     logStage(state, "po", "human_gate", `Gate PR opened: ${gateInfo.pr_url}`);
     console.log(`  PR opened: ${gateInfo.pr_url}`);
-    console.log(`  Merge the PR to approve, then resume: npm run pipeline:feature --resume\n`);
-    return { github: { ...state.github, pr_url: gateInfo.pr_url } };
+    console.log(`  Merge the PR OR approve via the Web UI at http://localhost:7842\n`);
   }
 
-  const poSummary = poContent?.user_stories?.length
-    ? `${poContent.user_stories.length} stories for Epic ${poContent.epic_key ?? epicKey ?? 'N/A'}`
-    : `Epic ${epicKey ?? 'N/A'} — review in Jira`;
+  // Poll for Web UI approval (or terminal fallback after timeout)
+  let port: number;
+  try { port = await startServer(); } catch { port = 0; }
 
-  const { approved, comment } = await webUIGate(
-    "po", "PO Story Review", state, poSummary, poContent ?? {}
+  if (port) {
+    console.log(`\n  🌐 Open browser to review and approve: http://localhost:${port}\n`);
+    const deadline = Date.now() + 30 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 2000));
+      const rec = readApproval(state.feature_id, "po");
+      if (rec) {
+        deletePending(state.feature_id, "po");
+        const { approved, comment } = rec;
+        logStage(state, "po", "human_gate", approved ? "PO approved via UI" : `PO rejected via UI: ${comment}`);
+        if (approved) {
+          console.log("\n  ✓ Approved — proceeding to Design\n");
+          return { human_approvals: { ...state.human_approvals, po: { approved: true, comment } } };
+        }
+        console.log(`\n  ↩ Sending back to PO agent with feedback: "${comment}"\n`);
+        return {
+          human_approvals: { ...state.human_approvals, po: { approved: false, comment } },
+          kickbacks: [{
+            stage: "po" as StageId, reason: "po_stories_rejected" as KickbackRecord["reason"],
+            detail: comment, retry_count: retries + 1,
+            timestamp: new Date().toISOString(), actionable: comment,
+          }],
+          retry_counts: { ...state.retry_counts, po: retries + 1 },
+        };
+      }
+    }
+    // Timeout — delete pending and fall through to terminal
+    deletePending(state.feature_id, "po");
+    console.log("  [gate] 30-min timeout — falling back to terminal prompt");
+  }
+
+  // Terminal fallback
+  const { approved, comment } = await askTerminalApproval(
+    `  ▶  [PO Story Review] Approve and continue?  [Enter/Y = approve  |  type feedback = revise]: `
   );
   logStage(state, "po", "human_gate", approved ? "PO approved" : `PO rejected: ${comment}`);
-
   if (approved) {
     console.log("\n  ✓ Approved — proceeding to Design\n");
     return { human_approvals: { ...state.human_approvals, po: { approved: true, comment } } };
   }
-
   console.log(`\n  ↩ Sending back to PO agent with feedback: "${comment}"\n`);
   return {
     human_approvals: { ...state.human_approvals, po: { approved: false, comment } },
     kickbacks: [{
-      stage:       "po" as StageId,
-      reason:      "po_stories_rejected" as KickbackRecord["reason"],
-      detail:      comment,
-      retry_count: retries + 1,
-      timestamp:   new Date().toISOString(),
-      actionable:  comment,
+      stage: "po" as StageId, reason: "po_stories_rejected" as KickbackRecord["reason"],
+      detail: comment, retry_count: retries + 1,
+      timestamp: new Date().toISOString(), actionable: comment,
     }],
     retry_counts: { ...state.retry_counts, po: retries + 1 },
   };
 }
+
 
 async function designGateNode(state: any): Promise<Partial<PipelineState>> {
   if (state.human_approvals?.design?.approved === true) {

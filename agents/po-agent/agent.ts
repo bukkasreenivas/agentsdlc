@@ -1,6 +1,7 @@
-// agents/po-agent/agent.ts — v3: grounded in real codebase
-// Stories are generated from the PM memo PLUS actual codebase context
-// so acceptance criteria and test scenarios reference real code, not hallucinations.
+// agents/po-agent/agent.ts — v4: INVEST + As-a/GWT format
+// Stories follow "As a <user>, I would like to <action>, so that <benefit>" format.
+// Acceptance Criteria follow Given / When / Then (GWT) table format.
+// INVEST criteria enforced in the LLM prompt.
 import { resolveModel, withFailover } from "../../config/llm-client";
 import { AGENT_MODELS }   from "../../config/agents";
 import { scanCodebase }   from "../../tools/codebase-scanner";
@@ -17,7 +18,7 @@ export async function runPOAgent(state: PipelineState): Promise<Partial<Pipeline
   const kickbackCount  = state.retry_counts?.po ?? 0;
   const lastKickback   = state.kickbacks.findLast((k: KickbackRecord) => k.stage === "po");
   const kickbackContext = lastKickback
-    ? `\n\nIMPORTANT — Revision ${kickbackCount}. Previous rejected.\nReason: ${lastKickback.detail}\nFix: ${lastKickback.actionable}`
+    ? `\n\nIMPORTANT — Revision ${kickbackCount}. Previous revision was rejected.\nReason: ${lastKickback.detail}\nFix required: ${lastKickback.actionable}`
     : "";
 
   // Scan the codebase so stories reference real existing code
@@ -37,17 +38,52 @@ export async function runPOAgent(state: PipelineState): Promise<Partial<Pipeline
       const response = await client.messages.create({
         model:      resolveModel(cfg.model),
         max_tokens: cfg.maxTokens,
-        system: `You are a Product Owner AI agent writing user stories for an EXISTING product.
+        system: `You are a Product Owner AI agent writing user stories for an EXISTING software product.
 
 CRITICAL RULES:
-1. Read the codebase context carefully — you are adding to THIS product, not inventing a new one.
-2. Every story's acceptance criteria must reference real, existing parts of the product (routes, screens, data models).
-3. Do NOT write generic placeholder stories. Write specific, testable stories for THIS codebase.
-4. Apply: User Story + Job Story (When/Want/So) + WWA (Why-What-Acceptance) + Test Scenarios.
-5. Generate a MAXIMUM of ${limit} user stories. Keep each concise (2-3 acceptance criteria, 1-2 test scenarios each).
+1. Read the codebase context carefully — you are ADDING to this product, not inventing a new one.
+2. Every story must reference real, existing parts of the codebase (real routes, real screens, real data models).
+3. Do NOT write generic or vague stories. Write specific, testable stories grounded in THIS codebase.
+4. Generate a MAXIMUM of ${limit} user stories.
 
-Output ONLY valid JSON — no markdown, no comments, no trailing commas:
-{"epic_summary":"string","epic_description":"string","stories":[{"summary":"string","job_story":"string","wwa":"string","acceptance_criteria":["string"],"test_scenarios":{"happy_path":["string"],"edge_cases":["string"],"error_states":["string"]},"story_points":number}]}`,
+## Story Format (MANDATORY)
+Each story MUST use the "As a / I would like to / So that" format:
+  "user_story": "As a <specific user role>, I would like to <specific action>, so that <specific benefit>"
+
+## INVEST Criteria (MANDATORY — each story must pass ALL)
+- Independent: Can be developed/delivered without depending on other stories in this set
+- Negotiable: Scope can be adjusted without loss of core value
+- Valuable: Directly delivers user or business value
+- Estimable: Complexity is clear enough to assign story points (Fibonacci: 1,2,3,5,8,13)
+- Small: Can be completed within one sprint
+- Testable: Has clear, measurable acceptance criteria
+
+## Acceptance Criteria Format (MANDATORY — Given/When/Then table)
+Each acceptance criterion MUST be a structured object with three fields:
+  { "given": "system state / precondition", "when": "user action or event", "then": "observable outcome" }
+Write 2-4 GWT criteria per story. Each must be specific and testable.
+
+Output ONLY valid JSON — no markdown fences, no comments, no trailing commas:
+{
+  "epic_summary": "string",
+  "epic_description": "string",
+  "stories": [
+    {
+      "summary": "string (short Jira title)",
+      "user_story": "As a <role>, I would like to <action>, so that <benefit>",
+      "invest_notes": "one sentence — why this story is Independent, Small, and Testable",
+      "acceptance_criteria": [
+        { "given": "string", "when": "string", "then": "string" }
+      ],
+      "test_scenarios": {
+        "happy_path": ["string"],
+        "edge_cases": ["string"],
+        "error_states": ["string"]
+      },
+      "story_points": 1
+    }
+  ]
+}`,
         messages: [{
           role: "user",
           content: `EXISTING PRODUCT CONTEXT:
@@ -60,8 +96,11 @@ AGREED SCOPE:
 ${agreedScope}
 ${kickbackContext}
 
-Generate an Epic and max ${limit} Stories that are SPECIFIC to this actual product.
-Acceptance criteria must reference real existing modules, screens, or API routes where applicable.
+Generate an Epic and max ${limit} user stories SPECIFIC to this actual product.
+- Use "As a / I would like to / So that" format for every user_story field
+- Use Given/When/Then objects for every acceptance_criteria item
+- Apply INVEST criteria — each story must be completable in one sprint
+- Reference real existing modules, routes, or screens from the codebase context
 Output ONLY valid JSON.`,
         }],
       });
@@ -84,15 +123,34 @@ Output ONLY valid JSON.`,
   const stories: UserStory[] = [];
 
   for (const s of parsed.stories) {
+    // Flatten GWT objects to strings for Jira (which expects plain strings)
+    const acStrings: string[] = (s.acceptance_criteria ?? []).map((ac: any) =>
+      typeof ac === "string"
+        ? ac
+        : `Given ${ac.given} | When ${ac.when} | Then ${ac.then}`
+    );
+
     const story = await createUserStory({
-      key: "", summary: s.summary, acceptance_criteria: s.acceptance_criteria,
-      story_points: s.story_points, epicKey: epic.key, job_story: s.job_story,
-      wwa: s.wwa, test_scenarios: [
+      key: "",
+      summary: s.summary,
+      // Store user_story in job_story field for backward compat; also store raw GWT
+      job_story: s.user_story ?? s.job_story ?? "",
+      acceptance_criteria: acStrings,
+      story_points: s.story_points,
+      epicKey: epic.key,
+      wwa: s.invest_notes ?? s.wwa ?? "",
+      test_scenarios: [
         ...(s.test_scenarios?.happy_path ?? []),
         ...(s.test_scenarios?.edge_cases ?? []),
         ...(s.test_scenarios?.error_states ?? []),
       ],
     });
+
+    // Attach the raw structured GWT array for the UI to render as a table
+    (story as any).acceptance_criteria_gwt = s.acceptance_criteria ?? [];
+    (story as any).user_story = s.user_story ?? s.job_story ?? "";
+    (story as any).invest_notes = s.invest_notes ?? "";
+
     stories.push(story);
   }
 
@@ -117,7 +175,6 @@ Output ONLY valid JSON.`,
   });
 
   // Clear the PO approval so the gate re-prompts the human with the revised stories.
-  // (If we kept approved:false, the gate would immediately send back here — infinite loop.)
   const { po: _clearPoApproval, ...restApprovals } = (state.human_approvals ?? {}) as any;
 
   return {
