@@ -305,6 +305,8 @@ async function pmPromoteGateNode(state: any): Promise<Partial<PipelineState>> {
   const { approved, comment } = await pollForApproval({
     featureId:  state.feature_id,
     stage:      "pm_promote",
+    summary:    pmContent?.pm_memo?.substring(0, 100) + "...",
+    detail:     pmContent,
     mode:       state.pipeline_mode,
     prNumber:   undefined,
   });
@@ -408,13 +410,15 @@ async function poGateNode(state: any): Promise<Partial<PipelineState>> {
   }
 
   const poSummary = poContent?.user_stories?.length
-    ? `${poContent.user_stories.length} stories for Epic ${poContent.epic_key ?? epicKey ?? "N/A"}`
-    : `Epic ${epicKey ?? "N/A"} — review in Jira`;
+    ? `${poContent.user_stories.length} stories for Epic ${poContent.epic_key ?? "N/A"}`
+    : `Epic review in Jira`;
 
   // 4. Delegate to gate factory — races GitHub review vs Web UI (whichever wins)
   const { approved, comment } = await pollForApproval({
     featureId:  state.feature_id,
     stage:      "po",
+    summary:    poSummary,
+    detail:     poContent,
     mode:       state.pipeline_mode,
     prNumber:   gatePrNumber,
   });
@@ -511,6 +515,8 @@ async function designGateNode(state: any): Promise<Partial<PipelineState>> {
   const { approved, comment } = await pollForApproval({
     featureId:  state.feature_id,
     stage:      "design",
+    summary:    designSummary,
+    detail:     designContent,
     mode:       state.pipeline_mode,
     prNumber:   gatePrNumber,
   });
@@ -625,6 +631,8 @@ async function qaGateNode(state: any): Promise<Partial<PipelineState>> {
   const { approved, comment } = await pollForApproval({
     featureId:  state.feature_id,
     stage:      "qa",
+    summary:    qaSummary,
+    detail:     qaContent,
     mode:       state.pipeline_mode,
     prNumber:   undefined,
   });
