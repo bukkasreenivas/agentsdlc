@@ -9,7 +9,6 @@ import { scanCodebase }   from "../../tools/codebase-scanner";
 import { makeDeliverable, writeAgentMemory } from "../../orchestrator/index";
 import { extractAllFromDir } from "../../tools/data-parser";
 import { featuresDir, syncFromPipelineState } from "../../orchestrator/feature-store";
-import { featuresDir, syncFromPipelineState } from "../../orchestrator/feature-store";
 import type { PipelineState, BrainstormRound, PMBrainstormDeliverable } from "../../types/state";
 
 /** Robust JSON parser that handles markdown fences and trailing noise */
@@ -38,25 +37,31 @@ function safeJSONParse(raw: string, fallback: any = {}): any {
 }
 
 const PM_AGENTS = [
-  { id:"visionary",   label:"Visionary PM",    model_key:"pm_brainstorm", skills:["/strategy","/north-star","OST"],
+  { id:"visionary",   label:"Visionary PM",    model_key:"pm_brainstorm", skills:["/lean-canvas","/value-proposition","OST"],
     system:`You are a Discovery PM identifying architectural needs for an EXISTING product.
-CRITICAL: Map the new feature to the existing USER PERSONAS and RBAC (Roles) in the codebase.
-1. Identify which USER ROLES (Admin, Manager, User) this affects.
-2. Identify all EXISTING components, routes, and modules that must change.
-3. Propose a high-level integration plan using the Opportunity Solution Tree.
-Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Integration strategy grounded in real files and user roles","ost_opportunity":"string","north_star_impact":"string","pm_skills_used":["string"]}` },
-  { id:"critic",      label:"Critic PM",       model_key:"pm_critic",     skills:["/pre-mortem","Tigers/Elephants","identify-assumptions"],
+CRITICAL: Use the LEAN CANVAS and VALUE PROPOSITION frameworks.
+1. Map the new feature to EXISTING USER PERSONAS and RBAC (Roles).
+2. Propose a high-level integration plan using the Opportunity Solution Tree (OST).
+3. If in DISCOVERY MODE: Synthesize raw customer signals into actionable feature ideas.
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Integration strategy grounded in real files","ost_opportunity":"string","north_star_impact":"string","lean_canvas":{"problem":"string","solution":"string","unique_value_prop":"string","unfair_advantage":"string"},"pm_skills_used":["string"]}` },
+  { id:"critic",      label:"Critic PM",       model_key:"pm_critic",     skills:["/identify-assumptions","/prioritize-assumptions","risk-mapping"],
     system:`You are a Devil's Advocate PM focused on RISK & SECURITY for an EXISTING product.
-CRITICAL: Identify dependency risks and RBAC vulnerabilities.
+CRITICAL: IDENTIFY and PRIORITIZE ASSUMPTIONS.
 1. What EXISTING dependencies/APIs could break?
-2. Are there any security or permission (RBAC) concerns with this feature?
-3. Apply: Pre-mortem, identifying Tigers (real threats) vs Paper Tigers.
-Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Security and dependency analysis","tigers":["..."],"elephants":["..."],"riskiest_assumption":"string","pm_skills_used":["string"]}` },
-  { id:"data",        label:"Data Analyst PM", model_key:"pm_critic",     skills:["RICE","market-sizing","cohorts"],
+2. Are there any security or permission (RBAC) concerns?
+3. Rank assumptions by (Uncertainty x Impact).
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Security and risk analysis","riskiest_assumptions":[{"assumption":"string","impact":1-10,"uncertainty":1-10}],"tigers":["..."],"pm_skills_used":["string"]}` },
+  { id:"data",        label:"Data Analyst PM", model_key:"pm_critic",     skills:["RICE","sentiment-analysis","cohorts"],
     system:`You are a Data-driven PM. Reference real existing metrics and data models.
 1. How does this affect the existing database schema?
-2. Identify RICE score using reach/impact data from the real codebase.
-Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Data & schema impact","rice_score":{"reach":0-10,"impact":0-10,"confidence":0.1-1.0,"effort":1-10},"metrics_affected":["..."],"pm_skills_used":["string"]}` },
+2. If in DISCOVERY MODE: Perform SENTIMENT ANALYSIS on raw customer feedback.
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Data & schema impact","sentiment_summary":"string","rice_score":{"reach":0-10,"impact":0-10,"confidence":0.1-1.0,"effort":1-10},"pm_skills_used":["string"]}` },
+  { id:"market",      label:"Market Intelligence",model_key:"pm_critic",     skills:["/competitor-analysis","SWOT","stay-afloat"],
+    system:`You are a Market Intelligence PM focused on COMPETITOR ANALYSIS and SWOT.
+1. Research the market for the provided competitors.
+2. Identify "STAY AFLOAT" features (Market Parity) vs "GROWTH" features.
+3. Generate a SWOT analysis for this feature/area.
+Output ONLY valid JSON: {"fit_score":1-10,"arguments_for":["..."],"arguments_against":["..."],"perspective":"Market & Competitor analysis","swot":{"strengths":[],"weaknesses":[],"opportunities":[],"threats":[]},"market_parity_features":["..."],"pm_skills_used":["string"]}` },
   { id:"user",        label:"User Advocate PM",model_key:"pm_critic",     skills:["JTBD","personas","journey-map"],
     system:`You are a User Advocate identifying UX and ROLE-BASED personas.
 1. Which specific User Persona from the ACTUAL product is the primary beneficiary?
@@ -131,14 +136,20 @@ async function runBrainstormAgent(
     ? `\n\nPrevious perspectives:\n${previousRounds.map(r => `${r.agent_id}: fit_score=${r.fit_score}, concern: ${r.arguments_against[0] ?? "none"}`).join("\n")}\nRespond to these in your analysis.`
     : "";
 
-  const modeContext = state.pipeline_mode === "idea"
+  const modeContext = state.pipeline_mode === "discovery"
+    ? `\n\nPIPELINE MODE: STRATEGIC DISCOVERY
+Focus: Analyzing raw customer signals/tickets and competitor benchmarks.
+1. Synthesize raw feedback into THEMES.
+2. Use Opportunity Solution Tree (OST) to map outcomes to feature opportunities.
+3. Identify "Stay Afloat" features (market parity).`
+    : state.pipeline_mode === "idea"
     ? `\n\nPIPELINE MODE: IDEA PIPELINE (Discovery & Strategy)
 Focus: Synthesizing raw customer feedback into a pristine opportunity. 
-Required PM Tools: Discovery, JTBD, Opportunity Solution Tree, Competitor Analysis, Problem Solving.
-Use the Competitor Strategy provided below to align this idea.`
+1. Use LEAN CANVAS and JTBD frameworks.
+2. Define how this fits with existing RBAC and USER ROLES.`
     : `\n\nPIPELINE MODE: FEATURE EXECUTION
 Focus: Validating a confirmed requirement before handing off to PO for engineering.
-Required PM Tools: Lean Canvas, RICE Prioritization, Assumption Mapping, Pre-mortems.`;
+Required PM Tools: Assumption Mapping, RICE prioritization, Pre-mortems.`;
 
   const raw = await withFailover(async (client) => {
     const response = await client.messages.create({
@@ -176,6 +187,13 @@ Output ONLY valid JSON.`,
     arguments_for:     parsed.arguments_for ?? [],
     arguments_against: parsed.arguments_against ?? [],
     pm_skills_used:    agent.skills,
+
+    // Extraction of discovery/strategy fields
+    swot:                 parsed.swot,
+    sentiment_summary:    parsed.sentiment_summary,
+    riskiest_assumptions: parsed.riskiest_assumptions,
+    lean_canvas:          parsed.lean_canvas,
+    market_parity_features: parsed.market_parity_features,
   };
 }
 
@@ -231,7 +249,49 @@ Output ONLY valid JSON.`,
     return response.content[0].type === "text" ? response.content[0].text : "{}";
   }, "pm-brainstorm:synthesizer");
 
-  return safeJSONParse(raw, { consensus: { build_decision: "proceed", confidence: 0.5, agreed_scope: "Parsing Error", open_risks: [], north_star_impact: "", ost_opportunity: "" }, pm_memo: "An error occurred while parsing the agent's PRD synthesis. Please check the logs." });
+async function runDiscoverySynthesizer(
+  rounds: BrainstormRound[],
+  codeContext: string,
+  supplementaryData: string,
+) {
+  const cfg = AGENT_MODELS.pm_synthesizer;
+  const roundsSummary = rounds.map(r =>
+    `## ${r.agent_id}\n${r.perspective}`
+  ).join("\n\n");
+
+  const raw = await withFailover(async (client) => {
+    const response = await client.messages.create({
+      model:      resolveModel(cfg.model),
+      max_tokens: cfg.maxTokens,
+      system: `You are a Strategic Discovery PM. Your goal is to synthesize raw customer signals and competitor benchmark into a Discovery Report.
+Output ONLY valid JSON:
+{
+  "signals_count": number,
+  "sentiment_score": 0.0-1.0,
+  "swot": { "strengths": [], "weaknesses": [], "opportunities": [], "threats": [] },
+  "ost": [
+    { "outcome": "string", "opportunities": [{ "title": "string", "description": "string", "rationale": "string", "market_parity": boolean }] }
+  ],
+  "discovery_memo": "markdown summary of the strategic landscape"
+}`,
+      messages: [{
+        role: "user",
+        content: `STRATEGIC DISCOVERY FOR EXISTING PRODUCT
+        
+EXISTING CODEBASE CONTEXT:
+${codeContext.slice(0, 2000)}
+
+ANALYSIS ROUNDS:
+${roundsSummary}
+
+RAW SIGNALS (Feedback/Tickets):
+${supplementaryData}`,
+      }],
+    });
+    return response.content[0].type === "text" ? response.content[0].text : "{}";
+  }, "pm-discovery:synthesizer");
+
+  return safeJSONParse(raw, { signals_count: 0, swot: { strengths: [], weaknesses: [], opportunities: [], threats: [] }, ost: [], discovery_memo: "Failed to synthesize discovery report." });
 }
 
 export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partial<PipelineState>> {
@@ -260,8 +320,10 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
 
   console.log(`  [PM] API routes found: ${codeCtx.apiRoutes.length}`);
 
+  const storeType = state.pipeline_mode === "feature" ? "features" : "ideas";
+
   // Load Supplementary Data (Uploaded files)
-  const attachmentsDir = path.join(featuresDir("features"), feature_id, "attachments");
+  const attachmentsDir = path.join(featuresDir(storeType), feature_id, "attachments");
   const extracted = await extractAllFromDir(attachmentsDir);
   const supplementaryData = extracted.map(e => `FILE: ${e.filename} (${e.summary})\n${e.content}`).join("\n\n---\n\n");
   if (extracted.length > 0) {
@@ -306,7 +368,7 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
             pm_brainstorm: makeDeliverable("pm_brainstorm", kickbackCount + 1, "PMBrainstormDeliverable", tempContent, "") 
         } 
     };
-    syncFromPipelineState(feature_id, syncState, state.pipeline_mode === "idea" ? "ideas" : "features");
+    syncFromPipelineState(feature_id, syncState, storeType);
   }
 
   console.log(`  [PM] Running synthesizer...`);
@@ -319,6 +381,18 @@ export async function runPMBrainstormSwarm(state: PipelineState): Promise<Partia
       console.log(`  [PM] Applying Feedback: "${lastMsg.text.substring(0, 50)}..."`);
   }
   
+  if (state.pipeline_mode === "discovery") {
+    console.log(`  [PM] Synthesizing Strategic Discovery Report...`);
+    const discoveryObj = await runDiscoverySynthesizer(rounds, codeContext, supplementaryData);
+    
+    return {
+      deliverables: {
+        ...state.deliverables,
+        pm_brainstorm: makeDeliverable("pm_brainstorm", kickbackCount + 1, "DiscoveryDeliverable", discoveryObj, "")
+      }
+    };
+  }
+
   const { consensus, pm_memo } = await runSynthesizer(feature_description, rounds, codeContext, supplementaryData, chatHistory);
   console.log(`  [PM] Synthesis Complete!`);
   console.log(`  [PM] Decision:   ${consensus.build_decision.toUpperCase()}`);

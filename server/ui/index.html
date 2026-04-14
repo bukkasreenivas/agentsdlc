@@ -361,6 +361,12 @@
       <div class="mode-toggle">
         <div class="mode-btn active" id="mode-ideas" onclick="setMode('ideas')">Ideas</div>
         <div class="mode-btn" id="mode-features" onclick="setMode('features')">Execution</div>
+      <div style="font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px;">
+        <span style="color:var(--accent)">✦</span> PROJECTS
+      </div>
+      <div style="display: flex; gap: 6px;">
+        <button class="btn btn-sm btn-secondary" onclick="openModal('discovery-modal')" title="Strategic Discovery Lab">🔍 Discover</button>
+        <button class="btn btn-sm btn-primary" onclick="openModal('new-idea-modal')">+ New <span class="hide-mobile">Idea</span></button>
       </div>
     </div>
     <div id="feature-list">
@@ -469,6 +475,41 @@
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('new-idea-modal')">Cancel</button>
       <button class="btn-primary" onclick="triggerPipeline()">Execute Brainstorm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Strategic Discovery Modal -->
+<div id="discovery-modal" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Strategic Discovery Lab</h3>
+      <button class="close-btn" onclick="closeModal('discovery-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+        Upload customer feedback (PDF, TXT, CSV), support tickets, or market notes. 
+        The AI will perform thematic analysis and suggest features to "stay afloat" vs innovate.
+      </p>
+
+      <label class="input-label">Discovery Subject / Problem Area</label>
+      <input type="text" id="disc-title" class="modal-input" placeholder="e.g. Mobile App Retention, Q3 Feedback Analysis">
+
+      <label class="input-label">Targets / Competitors (Optional)</label>
+      <input type="text" id="disc-competitors" class="modal-input" placeholder="e.g. competitor-a, competitor-b">
+
+      <div class="upload-zone" onclick="document.getElementById('disc-file-input').click()">
+        <input type="file" id="disc-file-input" style="display:none" multiple onchange="handleFileSelected(event, 'disc-file-list')">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:8px; color:var(--accent)">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <p>Drop raw signals here or click to browse</p>
+        <div id="disc-file-list" class="file-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('discovery-modal')">Cancel</button>
+      <button class="btn-primary" id="btn-run-discovery" onclick="executeDiscovery()">Run Discovery Swarm</button>
     </div>
   </div>
 </div>
@@ -778,18 +819,19 @@ function renderSidebar() {
     list.innerHTML = `<div class="empty" style="margin-top: 40px; font-size: 13px;">No ${currentMode} found.</div>`;
     return;
   }
-  list.innerHTML = listItems.map(f => {
-    const hasPending = pendingGates.some(g => g.featureId === f.featureId);
-    let st = f.status || 'running';
+  list.innerHTML = listItems.map(m => {
+    const hasPending = pendingGates.some(g => g.featureId === m.featureId);
+    let st = m.status || 'running';
     if (hasPending) st = 'pending_gate';
     const badgeClass = { 'pending_gate': 'badge-pending', 'done': 'badge-done', 'escalated': 'badge-escalated', 'running': 'badge-running' }[st];
     const lbl = hasPending ? 'Action Required' : st;
-    const date = new Date(f.startedAt).toLocaleDateString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const date = new Date(m.startedAt).toLocaleDateString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const icon = (m.pipeline_mode === "discovery") ? "🔍" : (m.storeType === "ideas" ? "💡" : "⚙️");
     
-    return `<div class="feature-item ${f.featureId === selectedId ? 'active' : ''}" onclick="selectItem('${f.featureId}', '${f.storeType || currentMode}')">
+    return `<div class="feature-item ${m.featureId === selectedId ? 'active' : ''}" onclick="selectItem('${m.featureId}', '${m.storeType || currentMode}')">
       <div style="display:flex; justify-content:space-between; align-items:start">
-        <div class="title">${esc(f.featureTitle)}</div>
-        ${currentMode === 'ideas' ? `<div onclick="deleteIdea(event, '${f.featureId}')" style="color:var(--text-muted); padding:4px; margin:-4px; cursor:pointer;" title="Delete Idea">&times;</div>` : ''}
+        <div class="title">${icon} ${esc(m.featureTitle)}</div>
+        ${currentMode === 'ideas' ? `<div onclick="deleteIdea(event, '${m.featureId}')" style="color:var(--text-muted); padding:4px; margin:-4px; cursor:pointer;" title="Delete Idea">&times;</div>` : ''}
       </div>
       <div class="meta">${date}</div>
       <div class="badge ${badgeClass}">${lbl}</div>
@@ -889,6 +931,7 @@ function selectTab(stage) {
 
 function renderContent() {
   const c = document.getElementById('content');
+  const m = itemData.manifest;
   if(!selectedStage || !itemData.stages) return c.innerHTML = '<div class="empty">No stage data.</div>';
   
   // Robust unwrapping: some stages save as {stage, data: {content}}, others directly
@@ -899,7 +942,12 @@ function renderContent() {
   if (stageData?.data) stageData = stageData.data;
   if (stageData?.content) stageData = stageData.content;
 
-  if(selectedStage === 'pm_brainstorm') {
+  if (m.pipeline_mode === "discovery") {
+    renderDiscoveryReport(m, stageData);
+    return;
+  }
+
+  if (m.currentStage === 'pm_brainstorm') {
     const memo = stageData?.pm_memo || stageData?.consensus?.pm_memo || '';
     const md = memo ? marked.parse(memo) : '<p style="color:var(--text-muted); font-style:italic">The agents are currently mapping the codebase and analyzing your request. You can provide additional guidance or feedback below while they work.</p>';
     c.innerHTML = `
@@ -983,12 +1031,110 @@ function renderContent() {
         </div>`;
       }).join('')}
      `;
-  } else {
-    // Generic viewer
-    c.innerHTML = `<div class="card"><h3>Raw JSON Export - ${TAB_NAMES[selectedStage] || selectedStage}</h3>
-      <pre style="font-size:13px;color:var(--text-muted);white-space:pre-wrap; margin-top:16px">${esc(JSON.stringify(stageData, null, 2))}</pre>
-    </div>`;
   }
+}
+
+async function executeDiscovery() {
+    const title = document.getElementById('disc-title').value.trim();
+    const competitors = document.getElementById('disc-competitors').value.trim();
+    const fileInput = document.getElementById('disc-file-input');
+    const btn = document.getElementById('btn-run-discovery');
+
+    if (!title) return alert("Please provide a Discovery Subject.");
+    if (fileInput.files.length === 0) return alert("Please upload at least one signal file (feedback, tickets, etc).");
+
+    try {
+        btn.disabled = true;
+        btn.textContent = 'Initializing Lab...';
+
+        // 1. Create a placeholder project to get ID
+        const res = await postJSON('/api/trigger', { title, description: `Discovery: ${title}`, mode: 'discovery' });
+        const featureId = res.logFile.match(/pipeline-(.+)\.log/)?.[1] || res.logFile;
+
+        // 2. Upload Files
+        btn.textContent = 'Uploading Signals...';
+        const formData = new FormData();
+        for (const file of fileInput.files) formData.append('files', file);
+        formData.append('featureId', featureId);
+        formData.append('storeType', 'ideas');
+
+        await fetch('/api/upload', { method: 'POST', body: formData });
+
+        // 3. Start Live Console
+        startLiveConsole(res.logFile);
+        closeModal('discovery-modal');
+        poll();
+    } catch (e) {
+        alert("Discovery failed: " + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Discovery Swarm';
+    }
+}
+
+function renderDiscoveryReport(m, data) {
+    const c = document.getElementById('content');
+    if (!data || !data.swot) {
+        return c.innerHTML = '<div class="empty">Generating discovery report... check the execution hub.</div>';
+    }
+
+    const swot = data.swot;
+    const ost = data.ost || [];
+
+    c.innerHTML = `
+        <div class="card" style="border-left: 4px solid var(--accent)">
+            <h2 style="font-size: 18px; margin-bottom: 8px;">🔍 Strategic Discovery: ${esc(m.featureTitle)}</h2>
+            <p style="font-size: 13px; color: var(--text-muted)">Project ID: ${m.featureId} | Mode: Strategic Discovery</p>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+            <div class="card" style="background: rgba(34, 197, 94, 0.05); border-color: rgba(34, 197, 94, 0.2)">
+                <h3 style="color: #22c55e; font-size: 12px; text-transform: uppercase;">Strengths</h3>
+                <ul style="padding-left: 20px; font-size: 13px; margin-top: 10px;">${swot.strengths.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+            </div>
+            <div class="card" style="background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2)">
+                <h3 style="color: #ef4444; font-size: 12px; text-transform: uppercase;">Weaknesses</h3>
+                <ul style="padding-left: 20px; font-size: 13px; margin-top: 10px;">${swot.weaknesses.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+            </div>
+            <div class="card" style="background: rgba(59, 130, 246, 0.05); border-color: rgba(59, 130, 246, 0.2)">
+                <h3 style="color: #3b82f6; font-size: 12px; text-transform: uppercase;">Opportunities</h3>
+                <ul style="padding-left: 20px; font-size: 13px; margin-top: 10px;">${swot.opportunities.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+            </div>
+            <div class="card" style="background: rgba(245, 158, 11, 0.05); border-color: rgba(245, 158, 11, 0.2)">
+                <h3 style="color: #f59e0b; font-size: 12px; text-transform: uppercase;">Threats</h3>
+                <ul style="padding-left: 20px; font-size: 13px; margin-top: 10px;">${swot.threats.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+            </div>
+        </div>
+
+        <h2 style="font-size: 16px; margin: 30px 0 16px;">Opportunity Solution Tree</h2>
+        ${ost.map(node => `
+            <div class="card" style="margin-bottom: 24px;">
+                <div style="font-weight: 700; color: var(--accent); margin-bottom: 16px; font-size: 14px;">🎯 OUTCOME: ${esc(node.outcome)}</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
+                    ${node.opportunities.map((opp, idx) => `
+                        <div style="background: var(--surface-hover); border: 1px solid var(--border); border-radius: 12px; padding: 16px; position: relative;">
+                            ${opp.market_parity ? `<span style="position: absolute; top: 12px; right: 12px; font-size: 10px; background: var(--yellow); color: black; padding: 2px 6px; border-radius: 4px; font-weight: 800;">MARKET PARITY</span>` : ''}
+                            <h4 style="font-size: 14px; margin-bottom: 8px; padding-right: 60px;">${esc(opp.title)}</h4>
+                            <p style="font-size: 12px; color: var(--text-muted); line-height: 1.4; margin-bottom: 12px;">${esc(opp.description)}</p>
+                            <div style="font-size: 11px; font-style: italic; color: var(--accent); margin-bottom: 16px;">Rationale: ${esc(opp.rationale)}</div>
+                            <button class="btn btn-sm btn-primary" style="width: 100%" onclick="promoteToIdea('${m.featureId}', '${node.outcome}-${idx}', '${esc(opp.title)}', '${esc(opp.description)}')">Promote to Idea</button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `).join('')}
+    `;
+}
+
+async function promoteToIdea(discoveryId, opportunityId, title, description) {
+    if (!confirm(`Are you sure you want to promote "${title}" to a full project idea?`)) return;
+    try {
+        const res = await postJSON('/api/promote', { discoveryId, opportunityId, title, description });
+        alert("Success! Check the Ideas sidebar for the new project.");
+        poll();
+    } catch (e) {
+        alert("Promotion failed: " + e.message);
+    }
 }
 
 // ── Manual Gates ──

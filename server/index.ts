@@ -271,7 +271,7 @@ async function handleRequest(
         "-r", "ts-node/register",
         path.join(agentsdlcDir, "orchestrator", "run.ts"),
         "--feature", featureText,
-        ...(body.mode === "idea" ? ["--mode", "idea"] : ["--mode", "feature"]),
+        "--mode",    body.mode || "feature",
       ],
       {
         cwd:      agentsdlcDir,
@@ -290,13 +290,43 @@ async function handleRequest(
     return;
   }
 
-  // ── POST /api/upload ────────────────────────────────────────────────────────
-  if (method === "POST" && pathname === "/api/upload") {
-    const form = new formidable.IncomingForm({
-      uploadDir:      path.join(path.resolve(__dirname, ".."), "memory", "uploads"),
-      keepExtensions: true,
-      maxFileSize:    10 * 1024 * 1024, // 10MB
-    });
+  // ── POST /api/promote ──────────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/promote") {
+    let body: any;
+    try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
+    const { discoveryId, opportunityId, title, description } = body;
+    if (!discoveryId || !opportunityId) { badRequest(res, "Required: discoveryId, opportunityId"); return; }
+
+    const agentsdlcDir = path.resolve(__dirname, "..");
+    
+    // 1. Link Signals: Copy attachments from discovery project to new idea project (will be done during run.ts initialization if we pass discoveryId)
+    // For now, we'll just trigger the run with a special discovery link flag.
+    const logDir  = path.join(agentsdlcDir, "memory", "runtime");
+    const logFd = fs.openSync(path.join(logDir, `promote-${discoveryId.slice(0,8)}.log`), "a");
+
+    const child = spawn(
+      process.execPath,
+      [
+        "-r", "ts-node/register",
+        path.join(agentsdlcDir, "orchestrator", "run.ts"),
+        "--feature", `${title} - ${description}`,
+        "--mode",    "idea",
+        "--link-discovery", discoveryId,
+      ],
+      {
+        cwd:      agentsdlcDir,
+        detached: true,
+        stdio:    ["ignore", logFd, logFd],
+        env:      { ...process.env, TS_NODE_PROJECT: path.join(agentsdlcDir, "tsconfig.json") },
+        shell:    false,
+      }
+    );
+    child.unref();
+    fs.closeSync(logFd);
+    
+    json(res, { ok: true, message: "Promoted to Idea pipeline." });
+    return;
+  }
 
     if (!fs.existsSync(form.uploadDir)) fs.mkdirSync(form.uploadDir, { recursive: true });
 

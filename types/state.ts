@@ -68,6 +68,12 @@ export interface BrainstormRound {
   arguments_for: string[];
   arguments_against: string[];
   pm_skills_used: string[]; // Which pm-skills commands were applied
+  // Discovery outputs (optional)
+  swot?: { strengths: string[]; weaknesses: string[]; opportunities: string[]; threats: string[] };
+  sentiment_summary?: string;
+  riskiest_assumptions?: Array<{ assumption: string; impact: number; uncertainty: number }>;
+  lean_canvas?: { problem: string; solution: string; unique_value_prop: string; unfair_advantage: string };
+  market_parity_features?: string[];
 }
 
 export interface PMConsensus {
@@ -77,6 +83,29 @@ export interface PMConsensus {
   open_risks: string[];
   north_star_impact: string;
   ost_opportunity: string;  // Opportunity Solution Tree node
+}
+
+// Discovery deliverable
+export interface DiscoveryDeliverable {
+  feature_id: string;
+  signals_count: number;
+  sentiment_score: number; // 0-1
+  swot: {
+    strengths: string[];
+    weaknesses: string[];
+    opportunities: string[];
+    threats: string[];
+  };
+  ost: Array<{
+    outcome: string;
+    opportunities: Array<{
+      title: string;
+      description: string;
+      rationale: string;
+      market_parity: boolean; // Must-have to stay afloat
+    }>;
+  }>;
+  competitors_searched: string[];
 }
 
 // PO deliverable
@@ -188,7 +217,8 @@ export interface PipelineState {
   repo_path: string;
   requested_by: string;
   created_at: string;
-  pipeline_mode: "idea" | "feature";
+  pipeline_mode: "idea" | "feature" | "discovery";
+  is_discovery?: boolean;
 
   // Graph navigation
   current_stage: StageId;

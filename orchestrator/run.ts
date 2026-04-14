@@ -23,6 +23,7 @@ const args = process.argv.slice(2);
 const get  = (flag: string) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : undefined; };
 const has  = (flag: string) => args.includes(flag);
 const modeArg = get("--mode") ?? "feature";
+const discoveryLink = get("--link-discovery");
 const mode = args[0];
 
 const hostPath = get("--repo") ?? syncWorkspace();
@@ -150,8 +151,21 @@ async function runFeaturePipeline() {
     stages:      [],
     currentStage: "pm_brainstorm",
     status:      "running",
-    storeType:   modeArg === "idea" ? "ideas" : "features",
-  }, modeArg === "idea" ? "ideas" : "features");
+    storeType:   modeArg === "idea" || modeArg === "discovery" ? "ideas" : "features",
+  }, modeArg === "idea" || modeArg === "discovery" ? "ideas" : "features");
+
+  // Transfer attachments if promoted from discovery
+  if (discoveryLink) {
+    const fromDir = path.join(path.resolve(__dirname, "../memory/ideas"), discoveryLink, "attachments");
+    const toDir   = path.join(path.resolve(__dirname, `../memory/${modeArg === "idea" ? "ideas" : "features"}`), featureId, "attachments");
+    if (fs.existsSync(fromDir)) {
+      console.log(`  [signal:link] Promoting signals from ${discoveryLink}...`);
+      fs.mkdirSync(toDir, { recursive: true });
+      fs.readdirSync(fromDir).forEach(file => {
+        fs.copyFileSync(path.join(fromDir, file), path.join(toDir, file));
+      });
+    }
+  }
 
   const { buildGraph } = await import("../graph/pipeline");
   const graph = buildGraph();
@@ -161,7 +175,7 @@ async function runFeaturePipeline() {
   const initial = savedState ?? {
     feature_id: featureId, feature_title: feature, feature_description: feature,
     repo_path: hostPath, requested_by: "cli", created_at: new Date().toISOString(),
-    pipeline_mode: modeArg as "idea" | "feature",
+    pipeline_mode: modeArg as "idea" | "feature" | "discovery",
     current_stage: "pm_brainstorm" as const, stage_history: [], kickbacks: [],
     retry_counts: {}, max_retries: maxRetry, deliverables: {}, human_approvals: {},
     jira: {}, github: {}, figma: {}, slack: {}, deployment: {}, stage_log: [], escalated: false,
@@ -184,8 +198,8 @@ async function runFeaturePipeline() {
       saveState(featureId, s);
       saveMeta({ featureId, featureTitle: feature, startedAt: initial.created_at, stage: s.current_stage });
       
-      // Determine store type (sync to 'ideas' if in idea mode, otherwise 'features')
-      const syncType = (s.pipeline_mode === "idea") ? "ideas" : "features";
+      // Determine store type (sync to 'ideas' if in idea/discovery mode, otherwise 'features')
+      const syncType = (s.pipeline_mode === "idea" || s.pipeline_mode === "discovery") ? "ideas" : "features";
       syncFromPipelineState(featureId, s, syncType);
       
       // If we just promoted to feature, also update the idea manifest to 'done' or similar 
