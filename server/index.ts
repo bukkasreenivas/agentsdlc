@@ -23,6 +23,7 @@ import * as formidable from "formidable";
 import {
   listFeatures,
   readManifest,
+  writeManifest,
   readStageData,
   writeStageData,
   listAllPending,
@@ -473,6 +474,22 @@ async function handleRequest(
     const sData: any = readStageData(featureId, stage, type) || { chat_history: [] };
     if (!sData.chat_history) sData.chat_history = [];
     sData.chat_history.push({ role: 'user', text: message, timestamp: new Date().toISOString() });
+    
+    // CRITICAL: Invalidate the LangGraph checkpoint state to force a re-run
+    const checkpointDir = path.join(agentsdlcDir, "memory", "checkpoints");
+    const statePath = path.join(checkpointDir, `${featureId}.state.json`);
+    if (fs.existsSync(statePath)) {
+      try {
+        const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+        if (state.deliverables?.[stage]) {
+          state.deliverables[stage].validated = false;
+          fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+        }
+      } catch (e: any) {
+        console.warn(`  [chat] Failed to invalidate checkpoint: ${e.message}`);
+      }
+    }
+
     writeStageData(featureId, stage, sData, type);
 
     // 2. Trigger a resume run

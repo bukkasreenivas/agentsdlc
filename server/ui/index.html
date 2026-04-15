@@ -131,7 +131,25 @@
     flex-direction: column; 
     z-index: 5;
   }
-  .sidebar-header { padding: 20px 16px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 16px; background: rgba(15,23,42,0.2);}
+  .sidebar-header {
+    padding: 20px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .sidebar-tools {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+  .sidebar-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
+  }
   .mode-toggle {
     display: flex;
     background: var(--bg);
@@ -575,7 +593,8 @@ let itemData      = {};
 // ── The Pipeline Order for Visualizer ──
 const PIPELINE_NODES = [
   { id: 'pm_brainstorm', label: 'PM' },
-  { id: 'po', label: 'PO' },
+  { id: 'pm_promote',    label: 'Promote' },
+  { id: 'po',            label: 'PO' },
   { id: 'design', label: 'Design' },
   { id: 'architect', label: 'Arch' },
   { id: 'dev_swarm', label: 'Dev' },
@@ -586,7 +605,8 @@ const PIPELINE_NODES = [
 ];
 
 const TAB_NAMES = {
-  pm_brainstorm: 'PM Synthesis',
+  pm_brainstorm: 'PM Brainstorm',
+  pm_promote:    'Promotion Memo',
   po: 'Engineering Stories',
   design: 'UX/UI Design',
   architect: 'Architecture',
@@ -992,10 +1012,16 @@ function renderContent() {
             ${(!stageData?.chat_history?.length) ? '<div style="color:var(--text-muted)">Need changes? Suggest them here and the PM will regenerate the PRD.</div>' : ''}
         </div>
         <div style="display:flex; gap:12px">
-          <input type="text" id="chat-input" placeholder="e.g. Add a dashboard for ROI analytics..." style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:10px; color:white; outline:none">
+          <input type="text" id="chat-input" placeholder="e.g. Add a dashboard for ROI analytics..." style="flex:1; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:10px; color:white; outline:none" oninput="window._lastChatInput = this.value">
           <button class="btn btn-primary" onclick="refineIdea('${selectedId}')" style="padding:0 20px">Send</button>
         </div>
       </div>
+      <script>
+        if (window._lastChatInput) {
+            const el = document.getElementById('chat-input');
+            if (el) el.value = window._lastChatInput;
+        }
+      <\/script>
     `;
     return;
   }
@@ -1156,11 +1182,21 @@ async function promoteToIdea(discoveryId, opportunityId, title, description) {
 
 // ── Manual Gates ──
 function showApprovalPanel(gate) {
-  document.getElementById('approval-panel').style.display = 'block';
-  document.getElementById('gate-label').innerHTML = `<span class="pulsing-dot"></span> HUMAN PR GATE: ${esc(gate.summary || gate.stage)}`;
+  const panel = document.getElementById('approval-panel');
+  const box = document.getElementById('comment-box');
+  
+  // Only update if it's a DIFFERENT gate or if the panel was hidden
+  const isDifferentGate = panel.dataset.currentGate !== `${gate.featureId}-${gate.stage}`;
+  
+  panel.style.display = 'block';
+  document.getElementById('gate-label').innerHTML = `<span class="pulsing-dot"></span> HUMAN GATE: ${esc(gate.summary || gate.stage)}`;
   document.getElementById('btn-approve').disabled = false;
   document.getElementById('btn-reject').disabled = false;
-  document.getElementById('comment-box').value = '';
+  
+  if (isDifferentGate) {
+    box.value = '';
+    panel.dataset.currentGate = `${gate.featureId}-${gate.stage}`;
+  }
 }
 function hideApprovalPanel() {
   document.getElementById('approval-panel').style.display = 'none';

@@ -63,8 +63,11 @@ function wrapNode(
     // ── Resume guard ─────────────────────────────────────────────────────────
     // If this stage already has a validated deliverable (loaded from disk on
     // --resume), skip the LLM call entirely and continue from where we left off.
+    // HOWEVER, if there's an active kickback for this stage, we MUST re-run.
     const existing = state.deliverables?.[stageId];
-    if (existing?.validated) {
+    const isKickedBack = state.kickbacks?.some((k: any) => k.stage === stageId);
+
+    if (existing?.validated && !isKickedBack) {
       logEntries.push(logStage(state, stageId, "completed",
         `Skipped — already completed (v${existing.version}, resuming from checkpoint)`));
       return { stage_log: logEntries };
