@@ -108,8 +108,27 @@ async function runBrainstormAgent(
     });
     return { text: response.content[0].type === "text" ? response.content[0].text : "{}" };
   }, `pm:${agent.id}`);
-
+  
   const parsed = safeJSONParse(raw.text, { perspective: "Error parsing agent response", fit_score: 5, arguments_for: [], arguments_against: [] });
+
+  // Verbose output — show full agent analysis
+  console.log(`\n  ┌─ ${agent.label.toUpperCase()} ─────────────────────────────────────`);
+  console.log(`  │ Fit Score: ${parsed.fit_score}/10`);
+  console.log(`  │ Perspective: ${parsed.perspective || "(none)"}`);
+  if (parsed.arguments_for?.length)     { console.log(`  │ FOR:`);     (parsed.arguments_for  as string[]).forEach(a => console.log(`  │   ✓ ${a}`)); }
+  if (parsed.arguments_against?.length) { console.log(`  │ AGAINST:`); (parsed.arguments_against as string[]).forEach(a => console.log(`  │   ✗ ${a}`)); }
+  // Agent-specific extras
+  if (parsed.riskiest_assumptions?.length) {
+    console.log(`  │ TOP RISKS:`);
+    (parsed.riskiest_assumptions as any[]).slice(0, 3).forEach(r => console.log(`  │   ⚠ ${r.assumption} (impact:${r.impact} uncertainty:${r.uncertainty})`));
+  }
+  if (parsed.rice_score)  console.log(`  │ RICE: R=${parsed.rice_score.reach} I=${parsed.rice_score.impact} C=${parsed.rice_score.confidence} E=${parsed.rice_score.effort}`);
+  if (parsed.swot)        console.log(`  │ SWOT strengths: ${(parsed.swot.strengths as string[]).join("; ")}`);
+  if (parsed.jtbd)        console.log(`  │ JTBD: ${parsed.jtbd}`);
+  if (parsed.sprint_estimate) console.log(`  │ Sprint estimate: ${parsed.sprint_estimate} | Complexity: ${parsed.tech_complexity}`);
+  if (parsed.north_star_impact) console.log(`  │ North star impact: ${parsed.north_star_impact}`);
+  console.log(`  └────────────────────────────────────────────────────────`);;
+  
   return { 
     agent_id: agent.id, 
     perspective: parsed.perspective || "No analysis provided", 
@@ -146,7 +165,8 @@ async function runSynthesizer(
     consensus: { build_decision: "proceed", confidence: 0.5, agreed_scope: "Parsing Error", open_risks: [], north_star_impact: "", ost_opportunity: "" }, 
     pm_memo: "An error occurred while parsing the agent's PRD synthesis." 
   });
-
+ 
+  console.log(`  [PM] Synthesis complete. Decision: ${consensus?.build_decision?.toUpperCase()} (Confidence: ${Math.round((consensus?.confidence||0)*100)}%)`);
   return { consensus, pm_memo };
 }
 

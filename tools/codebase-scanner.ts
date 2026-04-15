@@ -341,6 +341,7 @@ function readProjectOverview(): string | null {
 
 function safeReadExcerpt(filePath: string, maxChars = 600): string {
   try {
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return "";
     const content = fs.readFileSync(filePath, "utf8");
     return content.slice(0, maxChars).replace(/\r\n/g, "\n");
   } catch {
@@ -388,7 +389,8 @@ function readKeyFiles(
 
   // 4. First few API route/router files — show what endpoints exist
   for (const route of apiRoutes.slice(0, 5)) {
-    const full = fs.existsSync(route) ? route : path.join(repoPath, route);
+    // route is always relative to repoPath — never use CWD-relative existsSync
+    const full = path.join(repoPath, route);
     const content = safeReadExcerpt(full, 400);
     if (content) excerpts.push({ path: route, content, reason: "API route file — shows existing endpoints" });
   }
