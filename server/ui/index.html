@@ -451,13 +451,25 @@
   </main>
 </div>
 
+<!-- Hub Toggle (Floating button to re-open console) -->
+<button id="hub-toggle" onclick="maximizeConsole()" style="position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; border-radius: 50%; background: var(--accent); color: white; border: none; box-shadow: 0 4px 15px var(--accent-glow); cursor: pointer; display: none; align-items: center; justify-content: center; z-index: 1001; transition: transform 0.2s;">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"></polyline></svg>
+</button>
+
 <!-- Live Console -->
-<div id="console-panel" style="position: absolute; bottom: 85px; right: 20px; width: 480px; height: 320px; background: #0f172a; border: 1px solid var(--border); border-radius: 12px; display: none; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); z-index: 1000;">
-  <div id="console-header" style="background: #1e293b; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
+<div id="console-panel" style="position: absolute; bottom: 85px; right: 20px; width: 500px; height: 400px; background: #0f172a; border: 1px solid var(--border); border-radius: 12px; display: none; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5); z-index: 1000; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+  <div id="console-header" style="background: #1e293b; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); cursor: move;">
     <span style="font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em;"><span class="pulsing-dot" style="width:8px; height:8px; background:var(--yellow); border-radius:50%; display:inline-block; margin-right:8px; animation: pulse-yellow 1.5s infinite;"></span>Agent Execution Hub</span>
-    <button onclick="document.getElementById('console-panel').style.display='none'" style="background:none; border:none; color:white; cursor:pointer; font-size:16px">&times;</button>
+    <div style="display:flex; gap:12px; align-items:center;">
+      <button class="minimize-btn" onclick="minimizeConsole()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px; padding:0 4px;">—</button>
+      <button onclick="document.getElementById('console-panel').style.display='none'; document.getElementById('hub-toggle').style.display='none'" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:24px; padding:0 4px;">&times;</button>
+    </div>
   </div>
-  <div id="console-body" style="flex: 1; padding: 12px; font-family: 'Fira Code', 'Courier New', monospace; font-size: 11px; color: #e2e8f0; overflow-y: auto; line-height: 1.5; white-space: pre-wrap;"></div>
+  <div id="console-body" style="flex: 1; padding: 16px; font-family: 'Fira Code', 'Courier New', monospace; font-size: 11px; color: #e2e8f0; overflow-y: auto; line-height: 1.6; white-space: pre-wrap; background: rgba(15,23,42,0.5);"></div>
+  <div id="console-footer" style="padding: 12px 16px; background: #1e293b; border-top: 1px solid var(--border); display: flex; gap: 8px;">
+    <input type="text" id="console-chat-input" placeholder="Give feedback to agents..." style="flex:1; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 12px; font-size:12px; color:white; outline:none;" onkeydown="if(event.key==='Enter') sendConsoleChat()">
+    <button class="btn btn-sm btn-primary" onclick="sendConsoleChat()">Send</button>
+  </div>
 </div>
 
 <!-- ── Modals ── -->
@@ -764,23 +776,44 @@ async function deleteIdea(event, id) {
 function startLiveConsole(logName) {
   currentLogName = logName;
   document.getElementById('console-panel').style.display = 'flex';
+  document.getElementById('hub-toggle').style.display = 'none';
   document.getElementById('console-body').innerHTML = '<div class="log-line">Initializing agent execution...</div>';
   if (logPollTimer) clearInterval(logPollTimer);
   logPollTimer = setInterval(refreshLog, 2000);
 }
 
-function openLogModal() {
-  document.getElementById('log-output').textContent = 'Waiting for output...';
-  document.getElementById('log-status').textContent = 'Polling every 2s...';
-  document.getElementById('log-modal').classList.add('show');
-  if (logPollTimer) clearInterval(logPollTimer);
-  logPollTimer = setInterval(refreshLog, 2000);
-  refreshLog();
+function minimizeConsole() {
+  document.getElementById('console-panel').style.display = 'none';
+  document.getElementById('hub-toggle').style.display = 'flex';
 }
 
-function closeLogModal() {
-  document.getElementById('log-modal').classList.remove('show');
-  if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
+function maximizeConsole() {
+  document.getElementById('console-panel').style.display = 'flex';
+  document.getElementById('hub-toggle').style.display = 'none';
+}
+
+async function sendConsoleChat() {
+    if (!selectedId) {
+        alert("Please select a project first to send guidance to agents.");
+        return;
+    }
+    const input = document.getElementById('console-chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    try {
+        input.disabled = true;
+        input.placeholder = "PM is thinking...";
+        await postJSON('/api/chat', { featureId: selectedId, message: text, stage: 'pm_brainstorm' });
+        input.value = "";
+        input.disabled = false;
+        input.placeholder = "Give feedback to agents...";
+        poll();
+    } catch(e) {
+        alert("Failed to send message: " + e.message);
+        input.disabled = false;
+        input.placeholder = "Give feedback to agents...";
+    }
 }
 
 async function refreshLog() {
