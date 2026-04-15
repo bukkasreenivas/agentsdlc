@@ -35,6 +35,8 @@ import {
   deleteFeature,
 } from "../orchestrator/feature-store";
 
+import { loadSkillsForPath, loadAllSkills } from "../agents/pm-brainstorm/skill-registry";
+
 // ── Singleton server state ───────────────────────────────────────────────────
 
 let server: http.Server | null = null;
@@ -78,6 +80,40 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     req.on("end",  () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+}
+
+function spawnResume(
+  featureId: string,
+  type: "ideas" | "features",
+  agentsdlcDir: string,
+  tag: string,
+): { logFile: string } {
+  const logDir  = path.join(agentsdlcDir, "memory", "runtime");
+  const logFile = path.join(logDir, `${tag}-${featureId.slice(0, 8)}-${Date.now()}.log`);
+  fs.mkdirSync(logDir, { recursive: true });
+  fs.writeFileSync(logFile, "");
+  const logFd = fs.openSync(logFile, "a");
+  const mode = type === "ideas" ? "idea" : "feature";
+  const child = spawn(
+    process.execPath,
+    [
+      "-r", "ts-node/register",
+      path.join(agentsdlcDir, "orchestrator", "run.ts"),
+      "--resume",
+      "--id",   featureId,
+      "--mode", mode,
+    ],
+    {
+      cwd:      agentsdlcDir,
+      detached: true,
+      stdio:    ["ignore", logFd, logFd],
+      env:      { ...process.env, TS_NODE_PROJECT: path.join(agentsdlcDir, "tsconfig.json") },
+      shell:    false,
+    }
+  );
+  child.unref();
+  fs.closeSync(logFd);
+  return { logFile };
 }
 
 // ── Request handler ──────────────────────────────────────────────────────────
@@ -459,7 +495,7 @@ async function handleRequest(
   if (method === "POST" && pathname === "/api/chat") {
     let body: any;
     try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
-    const { featureId, message, stage = "pm_brainstorm" } = body;
+    const { featureId, message, stage = "pm_brainstorm", path: brainstormPath } = body;
     if (!featureId || !message) { badRequest(res, "Required: featureId, message"); return; }
 
     const agentsdlcDir = path.resolve(__dirname, "..");
@@ -474,8 +510,9 @@ async function handleRequest(
     const sData: any = readStageData(featureId, stage, type) || { chat_history: [] };
     if (!sData.chat_history) sData.chat_history = [];
     sData.chat_history.push({ role: 'user', text: message, timestamp: new Date().toISOString() });
-    
-    // CRITICAL: Invalidate the LangGraph checkpoint state to force a re-run
+
+    // 2. Invalidate the LangGraph checkpoint state to force a re-run
+    //    Also write pm_brainstorm_path and clear pm_thesis_requested
     const checkpointDir = path.join(agentsdlcDir, "memory", "checkpoints");
     const statePath = path.join(checkpointDir, `${featureId}.state.json`);
     if (fs.existsSync(statePath)) {
@@ -483,44 +520,163 @@ async function handleRequest(
         const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
         if (state.deliverables?.[stage]) {
           state.deliverables[stage].validated = false;
-          fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
         }
+        if (brainstormPath) state.pm_brainstorm_path = brainstormPath;
+        state.pm_thesis_requested = false;
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
       } catch (e: any) {
-        console.warn(`  [chat] Failed to invalidate checkpoint: ${e.message}`);
+        console.warn(`  [chat] Failed to update checkpoint: ${e.message}`);
       }
     }
 
     writeStageData(featureId, stage, sData, type);
 
-    // 2. Trigger a resume run
-    const logDir  = path.join(agentsdlcDir, "memory", "runtime");
-    const logFile = path.join(logDir, `chat-${featureId.slice(0,8)}-${Date.now()}.log`);
-    fs.mkdirSync(logDir, { recursive: true });
-    fs.writeFileSync(logFile, "");
-    const logFd = fs.openSync(logFile, "a");
+    // 3. Trigger a resume run
+    const { logFile: chatLogFile } = spawnResume(featureId, type, agentsdlcDir, "chat");
+    json(res, { ok: true, message: "Chat sent. PM is processing.", logFile: path.basename(chatLogFile) });
+    return;
+  }
 
-    const mode = type === "ideas" ? "idea" : "feature";
-    const child = spawn(
-      process.execPath,
-      [
-        "-r", "ts-node/register",
-        path.join(agentsdlcDir, "orchestrator", "run.ts"),
-        "--resume",
-        "--id",   featureId,
-        "--mode", mode,
-      ],
-      {
-        cwd:      agentsdlcDir,
-        detached: true,
-        stdio:    ["ignore", logFd, logFd],
-        env:      { ...process.env, TS_NODE_PROJECT: path.join(agentsdlcDir, "tsconfig.json") },
-        shell:    false,
+  // ── GET /api/skills ────────────────────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/skills") {
+    const parsed2 = url.parse(req.url ?? "/", true);
+    const skillPath = parsed2.query.path as string | undefined;
+    try {
+      if (skillPath && ["discovery", "competitor", "synthesis"].includes(skillPath)) {
+        json(res, loadSkillsForPath(skillPath as "discovery" | "competitor" | "synthesis"));
+      } else {
+        json(res, loadAllSkills());
       }
-    );
-    child.unref();
-    fs.closeSync(logFd);
-    
-    json(res, { ok: true, message: "Chat sent. PM is revising.", logFile: path.basename(logFile) });
+    } catch (e: any) {
+      json(res, { error: `Failed to load skills: ${e.message}` }, 500);
+    }
+    return;
+  }
+
+  // ── POST /api/select-path ──────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/select-path") {
+    let body: any;
+    try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
+    const { featureId, path: brainstormPath } = body;
+    if (!featureId || !brainstormPath) { badRequest(res, "Required: featureId, path"); return; }
+    if (!["discovery", "competitor", "synthesis"].includes(brainstormPath)) {
+      badRequest(res, "path must be: discovery | competitor | synthesis"); return;
+    }
+
+    const agentsdlcDir = path.resolve(__dirname, "..");
+    const statePath = path.join(agentsdlcDir, "memory", "checkpoints", `${featureId}.state.json`);
+    if (fs.existsSync(statePath)) {
+      try {
+        const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+        state.pm_brainstorm_path = brainstormPath;
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+      } catch (e: any) {
+        json(res, { error: `Failed to update checkpoint: ${e.message}` }, 500); return;
+      }
+    }
+
+    console.log(`  [UI] Selected path "${brainstormPath}" for ${featureId.slice(0, 8)}`);
+    json(res, { ok: true, path: brainstormPath });
+    return;
+  }
+
+  // ── POST /api/thesis ───────────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/thesis") {
+    let body: any;
+    try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
+    const { featureId } = body;
+    if (!featureId) { badRequest(res, "Required: featureId"); return; }
+
+    const agentsdlcDir = path.resolve(__dirname, "..");
+
+    // Detect storage type
+    let thesisType: "ideas" | "features" = "features";
+    if (fs.existsSync(path.join(agentsdlcDir, "memory", "ideas", featureId))) {
+      thesisType = "ideas";
+    }
+
+    // Set pm_thesis_requested = true + invalidate checkpoint
+    const statePath = path.join(agentsdlcDir, "memory", "checkpoints", `${featureId}.state.json`);
+    if (fs.existsSync(statePath)) {
+      try {
+        const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+        state.pm_thesis_requested = true;
+        if (state.deliverables?.pm_brainstorm) {
+          state.deliverables.pm_brainstorm.validated = false;
+        }
+        fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+      } catch (e: any) {
+        json(res, { error: `Failed to update checkpoint: ${e.message}` }, 500); return;
+      }
+    }
+
+    console.log(`  [UI] Thesis requested for ${featureId.slice(0, 8)} — spawning 5-PM debate`);
+    const { logFile: thesisLogFile } = spawnResume(featureId, thesisType, agentsdlcDir, "thesis");
+    json(res, { ok: true, message: "Full PM Thesis started. This takes 2–3 minutes.", logFile: path.basename(thesisLogFile) });
+    return;
+  }
+
+  // ── POST /api/approve-prd ──────────────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/approve-prd") {
+    let body: any;
+    try { body = JSON.parse(await readBody(req)); } catch { badRequest(res, "Invalid JSON body"); return; }
+    const { featureId, type: storeType } = body;
+    if (!featureId) { badRequest(res, "Required: featureId"); return; }
+
+    const agentsdlcDir = path.resolve(__dirname, "..");
+
+    // Detect storage type
+    let prdType: "ideas" | "features" = (storeType as any) ?? "features";
+    if (!storeType && fs.existsSync(path.join(agentsdlcDir, "memory", "ideas", featureId))) {
+      prdType = "ideas";
+    }
+
+    // 1. Read current PRD from checkpoint state
+    const statePath = path.join(agentsdlcDir, "memory", "checkpoints", `${featureId}.state.json`);
+    if (!fs.existsSync(statePath)) {
+      badRequest(res, "No checkpoint found for this feature"); return;
+    }
+
+    let checkpointState: any;
+    try {
+      checkpointState = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    } catch (e: any) {
+      json(res, { error: `Failed to read checkpoint: ${e.message}` }, 500); return;
+    }
+
+    const prdContent = checkpointState.deliverables?.pm_brainstorm?.content?.prd_draft;
+    if (!prdContent) {
+      badRequest(res, "No PRD draft found in checkpoint. Complete at least one chat turn first."); return;
+    }
+
+    // 2. Write PRD.md to memory/features/<featureId>/PRD.md
+    const prdDir  = path.join(agentsdlcDir, "memory", prdType, featureId);
+    const prdPath = path.join(prdDir, "PRD.md");
+    fs.mkdirSync(prdDir, { recursive: true });
+    fs.writeFileSync(prdPath, prdContent, "utf8");
+
+    // 3. Set prd_approved: true in checkpoint state + invalidate to allow resume
+    checkpointState.deliverables.pm_brainstorm.content.prd_approved = true;
+    checkpointState.deliverables.pm_brainstorm.validated = false;
+    fs.writeFileSync(statePath, JSON.stringify(checkpointState, null, 2));
+
+    // 4. Commit PRD.md to git
+    try {
+      commitToGit(featureId, `PRD approved — ${featureId.slice(0, 8)}`, prdType);
+    } catch (e: any) {
+      console.warn(`  [approve-prd] git commit failed: ${e.message}`);
+    }
+
+    // 5. Spawn --resume to continue into PO agent
+    console.log(`  [UI] PRD approved for ${featureId.slice(0, 8)} — triggering PO phase`);
+    const { logFile: prdLogFile } = spawnResume(featureId, prdType, agentsdlcDir, "approve-prd");
+
+    json(res, {
+      ok:      true,
+      prd_url: `memory/${prdType}/${featureId}/PRD.md`,
+      message: "PRD committed. PO agent is starting.",
+      logFile: path.basename(prdLogFile),
+    });
     return;
   }
 

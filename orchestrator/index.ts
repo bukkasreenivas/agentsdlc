@@ -91,7 +91,7 @@ export interface ValidationResult {
 }
 
 const REQUIRED_FIELDS: Partial<Record<StageId, string[]>> = {
-  pm_brainstorm: ["consensus.build_decision", "consensus.confidence", "pm_memo", "brainstorm_rounds"],
+  pm_brainstorm: ["feature_id", "chat_history"],  // minimal — schema-aware check handles the rest
   po:            ["epic_key", "user_stories"],
   design:        ["figma_file_key", "frame_urls"],
   architect:     ["adr_content", "feature_branch", "frontend_tasks", "backend_tasks"],
@@ -132,6 +132,22 @@ export async function validateDeliverable(
         actionable: `Ensure the ${stage} agent produces a '${field}' in its output.`,
       };
     }
+  }
+
+  // ── pm_brainstorm: schema-aware validation ───────────────────────────────────
+  if (stage === "pm_brainstorm") {
+    if (deliverable.schema === "PMModularBrainstormDeliverable") {
+      // Chat-mode turns are always valid as long as feature_id exists
+      if (!content.feature_id) {
+        return { valid: false, kickback_reason: "pm_fit_rejected", detail: "Missing feature_id in PMModularBrainstormDeliverable", actionable: "Ensure chat-agent sets feature_id." };
+      }
+      // After thesis: must have both consensus and pm_memo
+      if (content.brainstorm_rounds?.length > 0 && (!content.consensus || !content.pm_memo)) {
+        return { valid: false, kickback_reason: "pm_fit_rejected", detail: "Thesis ran but consensus/pm_memo missing", actionable: "Synthesizer must produce consensus and pm_memo." };
+      }
+      return { valid: true, detail: "PMModularBrainstormDeliverable valid", actionable: "" };
+    }
+    // Legacy PMBrainstormDeliverable — fall through to standard field checks above
   }
 
   // Stage-specific validation

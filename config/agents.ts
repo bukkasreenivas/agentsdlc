@@ -2,6 +2,8 @@
 export interface AgentConfig { model: string; maxTokens: number; temperature: number; }
 
 export const AGENT_MODELS: Record<string, AgentConfig> = {
+  // Single-agent chat turn — cheap per message (~3k tokens)
+  pm_chat:        { model: "claude-sonnet-4-6",        maxTokens: 4096, temperature: 0.5 },
   pm_brainstorm:  { model: "claude-opus-4-20250514",   maxTokens: 8192, temperature: 0.4 },
   pm_critic:      { model: "claude-sonnet-4-20250514", maxTokens: 4096, temperature: 0.3 },
   pm_synthesizer: { model: "claude-opus-4-20250514",   maxTokens: 8192, temperature: 0.2 },

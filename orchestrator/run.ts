@@ -24,6 +24,7 @@ const get  = (flag: string) => { const i = args.indexOf(flag); return i !== -1 ?
 const has  = (flag: string) => args.includes(flag);
 const modeArg = get("--mode") ?? "feature";
 const discoveryLink = get("--link-discovery");
+const brainstormPathArg = get("--path") as "discovery" | "competitor" | "synthesis" | undefined;
 const mode = args[0];
 
 const hostPath = get("--repo") ?? syncWorkspace();
@@ -179,6 +180,8 @@ async function runFeaturePipeline() {
     current_stage: "pm_brainstorm" as const, stage_history: [], kickbacks: [],
     retry_counts: {}, max_retries: maxRetry, deliverables: {}, human_approvals: {},
     jira: {}, github: {}, figma: {}, slack: {}, deployment: {}, stage_log: [], escalated: false,
+    pm_brainstorm_path: brainstormPathArg ?? "discovery",
+    pm_thesis_requested: false,
   };
 
   const streamConfig = {

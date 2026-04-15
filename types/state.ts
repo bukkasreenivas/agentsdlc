@@ -52,7 +52,32 @@ export interface Deliverable {
   memory_path: string;      // agents/<name>/memory/runtime/<stage>-v<n>.json
 }
 
-// PM Brainstorm deliverable — output of the multi-agent swarm
+// ── PM Modular Brainstorm (new) ───────────────────────────────────────────────
+
+export interface PMChatTurn {
+  role: "user" | "assistant";
+  text: string;
+  timestamp: string;
+  skill_used?: string;       // which SKILL.md was active for this assistant turn
+  prd_snapshot?: string;     // PRD state after this assistant turn
+}
+
+export interface PMModularBrainstormDeliverable {
+  feature_id: string;
+  feature_title: string;
+  path: "discovery" | "competitor" | "synthesis";
+  chat_history: PMChatTurn[];
+  prd_draft: string;         // living PRD markdown — updated every agent turn
+  prd_complete: boolean;     // agent signals all sections are filled
+  prd_approved: boolean;     // PM clicked Approve
+  prd_github_url?: string;   // URL of committed PRD.md in host repo
+  // Populated only after thesis runs:
+  brainstorm_rounds?: BrainstormRound[];
+  consensus?: PMConsensus;
+  pm_memo?: string;
+}
+
+// PM Brainstorm deliverable — output of the multi-agent swarm (legacy)
 export interface PMBrainstormDeliverable {
   feature_id: string;
   feature_title: string;
@@ -220,6 +245,10 @@ export interface PipelineState {
   created_at: string;
   pipeline_mode: "idea" | "feature" | "discovery";
   is_discovery?: boolean;
+
+  // PM modular brainstorm (new)
+  pm_brainstorm_path?: "discovery" | "competitor" | "synthesis";
+  pm_thesis_requested?: boolean;   // PM clicked Run Thesis → triggers full 5-PM swarm
 
   // Graph navigation
   current_stage: StageId;

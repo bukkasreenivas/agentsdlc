@@ -127,10 +127,20 @@ function wrapNode(
 // ── Conditional edge routing ──────────────────────────────────────────────────
 
 function routeAfterPMBrainstorm(state: PipelineState): string {
-  const d = state.deliverables?.pm_brainstorm?.content as any;
+  const deliverable = state.deliverables?.pm_brainstorm;
+  const d = deliverable?.content as any;
   if (!d) return "escalate";
-  if (d.consensus?.build_decision === "reject") return "escalate";  // PM hard-rejects
-  
+
+  // New modular schema: chat turns don't have consensus yet — hold at gate
+  if (deliverable?.schema === "PMModularBrainstormDeliverable") {
+    if (!d.consensus) return "pm_brainstorm_gate";   // wait for thesis or approval
+    if (d.consensus?.build_decision === "reject") return "escalate";
+    if (state.pipeline_mode === "idea") return "pm_promote_gate";
+    return "po";
+  }
+
+  // Legacy PMBrainstormDeliverable path (backward compat)
+  if (d.consensus?.build_decision === "reject") return "escalate";
   if (state.pipeline_mode === "idea") return "pm_promote_gate";
   return "po";
 }
@@ -291,6 +301,53 @@ async function webUIGate(
   return askTerminalApproval(
     `  ▶  [${stageLabel}] Approve and continue?  [Enter/Y = approve  |  type feedback = revise]: `
   );
+}
+
+// ── PM Brainstorm Gate — chat UI gate for modular brainstorm ─────────────────
+// Writes a pending gate so the UI shows the chat interface.
+// Routes to END (waiting for /api/chat or /api/thesis) UNLESS thesis was requested,
+// in which case the node re-routes back to pm_brainstorm for the full 5-PM run.
+
+async function pmBrainstormGateNode(state: any): Promise<Partial<PipelineState>> {
+  // If PRD was approved via /api/approve-prd, the checkpoint already has pipeline_mode="feature"
+  // and the gate should be skipped
+  const d = state.deliverables?.pm_brainstorm?.content as any;
+  if (d?.prd_approved === true) {
+    console.log("  [pm_brainstorm_gate] PRD approved — routing to PO");
+    return {};
+  }
+
+  // Thesis was requested — let the routing function send back to pm_brainstorm
+  if (state.pm_thesis_requested === true) {
+    console.log("  [pm_brainstorm_gate] Thesis requested — routing back to pm_brainstorm");
+    return {};
+  }
+
+  // Write pending gate so UI shows the chat interface
+  const storeType = (state.pipeline_mode === "idea" || state.pipeline_mode === "discovery") ? "ideas" : "features";
+  const pending: PendingGate = {
+    featureId:    state.feature_id,
+    featureTitle: state.feature_title ?? state.feature_id,
+    stage:        "pm_brainstorm",
+    stageLabel:   "PM Discovery Chat",
+    summary:      "PM is brainstorming the feature. Chat to refine the idea, then Approve PRD or Run PM Thesis.",
+    detail:       d ?? {},
+    createdAt:  new Date().toISOString(),
+    timeoutAt:  new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+  };
+  writePending(state.feature_id, "pm_brainstorm", pending, storeType);
+
+  try {
+    const port = await startServer();
+    console.log(`\n  🌐 PM Discovery Chat ready:`);
+    console.log(`     http://localhost:${port}\n`);
+    console.log(`     Chat with the PM agent, then Approve PRD or Run Full PM Thesis.\n`);
+  } catch {
+    console.log("  [pm_brainstorm_gate] Server unavailable — pipeline paused. Run npm run ui:start manually.");
+  }
+
+  // Return empty — the pipeline ends here until /api/chat or /api/thesis resumes it
+  return {};
 }
 
 async function pmPromoteGateNode(state: any): Promise<Partial<PipelineState>> {
@@ -727,6 +784,9 @@ const PipelineAnnotation = Annotation.Root({
   }),
   escalated:           Annotation<boolean>({ value: (_, b) => b, default: () => false }),
   escalation_reason:   Annotation<string | undefined>({ value: (_, b) => b, default: () => undefined }),
+  // PM modular brainstorm
+  pm_brainstorm_path:  Annotation<"discovery" | "competitor" | "synthesis" | undefined>({ value: (_, b) => b, default: () => undefined }),
+  pm_thesis_requested: Annotation<boolean>({ value: (_, b) => b, default: () => false }),
 });
 
 export function buildGraph() {
@@ -736,8 +796,9 @@ export function buildGraph() {
   const graph = new StateGraph(PipelineAnnotation) as any;
 
   // Add nodes
-  graph.addNode("pm_brainstorm", wrapNode("pm_brainstorm", runPMBrainstormSwarm, { sod_role: "maker" }));
-  graph.addNode("pm_promote_gate", pmPromoteGateNode);
+  graph.addNode("pm_brainstorm",      wrapNode("pm_brainstorm", runPMBrainstormSwarm, { sod_role: "maker" }));
+  graph.addNode("pm_brainstorm_gate", pmBrainstormGateNode);
+  graph.addNode("pm_promote_gate",    pmPromoteGateNode);
   graph.addNode("po",            wrapNode("po",            runPOAgent,            { sod_role: "maker" }));
   graph.addNode("po_gate",       poGateNode);
   graph.addNode("design",        wrapNode("design",        runDesignAgent,        { sod_role: "maker" }));
@@ -757,11 +818,20 @@ export function buildGraph() {
   graph.addEdge(START, "pm_brainstorm");
 
   graph.addConditionalEdges("pm_brainstorm", routeAfterPMBrainstorm, {
-    pm_brainstorm:   "pm_brainstorm",
-    pm_promote_gate: "pm_promote_gate",
-    po:              "po",
-    escalate:        "escalate",
+    pm_brainstorm:      "pm_brainstorm",
+    pm_brainstorm_gate: "pm_brainstorm_gate",
+    pm_promote_gate:    "pm_promote_gate",
+    po:                 "po",
+    escalate:           "escalate",
   });
+
+  // pm_brainstorm_gate: end and wait for /api/chat or /api/thesis to resume,
+  // OR if thesis was requested / PRD approved, route back to pm_brainstorm
+  graph.addConditionalEdges("pm_brainstorm_gate", (s: any) => {
+    if (s.pm_thesis_requested === true) return "pm_brainstorm";
+    if (s.deliverables?.pm_brainstorm?.content?.prd_approved === true) return "po";
+    return "__end__";
+  }, { pm_brainstorm: "pm_brainstorm", po: "po", __end__: END });
 
   graph.addConditionalEdges("pm_promote_gate", (s: any) => {
     const a = s.human_approvals?.pm_promote;
