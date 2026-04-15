@@ -552,28 +552,74 @@
 
 <!-- New Idea Modal -->
 <div id="new-idea-modal" class="modal-backdrop">
-  <div class="modal">
+  <div class="modal" style="max-width:600px;">
     <div class="modal-header">
-      <h3>Submit New Idea (Discovery)</h3>
-      <button class="close-btn" onclick="closeModal('new-idea-modal')">×</button>
+      <div>
+        <h3 id="idea-modal-title">New Idea — Step 1 of 2</h3>
+        <div id="idea-modal-steps" style="font-size:11px; color:var(--text-muted); margin-top:2px;">
+          <span id="step-dot-1" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:4px;"></span>
+          <span id="step-dot-2" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--border);margin-right:4px;"></span>
+          Describe your idea, then choose a discovery approach
+        </div>
+      </div>
+      <button class="close-btn" onclick="closeNewIdeaModal()">×</button>
     </div>
-    <div class="modal-body">
-      <label class="input-label">Feature/Idea Title</label>
-      <input type="text" id="new-item-title" class="modal-input" placeholder="e.g. AI Workflow Synthesizer">
-      
-      <label class="input-label">Customer Feedback & Requirements (Raw)</label>
-      <textarea id="new-item-desc" class="modal-input" style="height: 120px; resize: none;" placeholder="Paste unstructured customer feedback, meeting transcripts, or rough ideas here..."></textarea>
-      
-      <label class="input-label">Supporting Data (Excel, CSV, Text)</label>
-      <div class="upload-zone" onclick="document.getElementById('file-input').click()" style="border: 2px dashed var(--border); border-radius: 8px; padding: 16px; text-align: center; cursor: pointer; background: var(--surface-hover); margin-top: 8px;">
+
+    <!-- Step 1: Title + Description -->
+    <div id="idea-step-1">
+      <div class="modal-body">
+        <label class="input-label">Feature/Idea Title *</label>
+        <input type="text" id="new-item-title" class="modal-input" placeholder="e.g. Reporting dashboard for admin users">
+
+        <label class="input-label">Describe your idea / paste customer feedback *</label>
+        <textarea id="new-item-desc" class="modal-input" style="height: 120px; resize: none;"
+          placeholder="Paste customer feedback, requirements, meeting notes, or rough ideas here. The PM agent will use this as context to start asking the right questions."></textarea>
+
+        <label class="input-label">Supporting Data (Excel, CSV, Text) — optional</label>
+        <div class="upload-zone" onclick="document.getElementById('file-input').click()"
+          style="border: 2px dashed var(--border); border-radius: 8px; padding: 14px; text-align: center; cursor: pointer; background: var(--surface-hover); margin-top: 4px;">
           <p style="font-size:12px; color:var(--text-muted); margin:0;">Drag files here or click to browse</p>
           <input type="file" id="file-input" multiple style="display:none" onchange="handleFileSelect(event)">
           <div id="file-list" style="margin-top: 8px; font-size: 11px; color: var(--accent); text-align: left;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeNewIdeaModal()">Cancel</button>
+        <button class="btn-primary" onclick="goToIdeaStep2()">Next: Choose Approach →</button>
       </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeModal('new-idea-modal')">Cancel</button>
-      <button class="btn-primary" onclick="triggerPipeline()">Execute Brainstorm</button>
+
+    <!-- Step 2: Discovery Path Selection -->
+    <div id="idea-step-2" style="display:none;">
+      <div class="modal-body">
+        <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+          Choose how the PM agent should approach your idea. Each path uses a curated set of PM skills.
+        </p>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+          <div class="path-card" onclick="triggerPipeline('discovery')">
+            <div class="path-card-icon">🔍</div>
+            <div class="path-card-title">Discovery</div>
+            <div class="path-card-desc">Brainstorm and refine the idea through targeted questions. Best for new feature ideas.</div>
+            <div class="path-card-skills">Brainstorm · OST · Assumptions · Prioritise</div>
+          </div>
+          <div class="path-card" onclick="triggerPipeline('competitor')">
+            <div class="path-card-icon">🏁</div>
+            <div class="path-card-title">Competitor</div>
+            <div class="path-card-desc">Map feature gaps vs competitors. Identify market opportunities and user segments.</div>
+            <div class="path-card-skills">Competitor · Market · Personas · Sizing</div>
+          </div>
+          <div class="path-card" onclick="triggerPipeline('synthesis')">
+            <div class="path-card-icon">📋</div>
+            <div class="path-card-title">Synthesis</div>
+            <div class="path-card-desc">Synthesize customer feedback, Chorus notes, or support tickets into actionable ideas.</div>
+            <div class="path-card-skills">Sentiment · Feature requests · Interviews</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="goToIdeaStep1()">← Back</button>
+        <span style="font-size:12px; color:var(--text-muted);">Click a card to start the PM chat</span>
+      </div>
     </div>
   </div>
 </div>
@@ -731,47 +777,72 @@ function handleFileSelect(e) {
   list.innerHTML = selectedFiles.map(f => `<div>• ${f.name} (${Math.round(f.size/1024)} KB)</div>`).join('');
 }
 
-async function triggerPipeline() {
+function closeNewIdeaModal() {
+  closeModal('new-idea-modal');
+  goToIdeaStep1(); // reset to step 1 for next open
+}
+
+function goToIdeaStep2() {
+  const title = document.getElementById('new-item-title').value.trim();
+  const desc  = document.getElementById('new-item-desc').value.trim();
+  if (!title && !desc) { alert('Please enter a title or description first.'); return; }
+  document.getElementById('idea-step-1').style.display = 'none';
+  document.getElementById('idea-step-2').style.display = '';
+  document.getElementById('idea-modal-title').textContent = 'New Idea — Step 2 of 2';
+  document.getElementById('step-dot-1').style.background = 'var(--green)';
+  document.getElementById('step-dot-2').style.background = 'var(--accent)';
+}
+
+function goToIdeaStep1() {
+  document.getElementById('idea-step-1').style.display = '';
+  document.getElementById('idea-step-2').style.display = 'none';
+  document.getElementById('idea-modal-title').textContent = 'New Idea — Step 1 of 2';
+  document.getElementById('step-dot-1').style.background = 'var(--accent)';
+  document.getElementById('step-dot-2').style.background = 'var(--border)';
+}
+
+async function triggerPipeline(brainstormPath) {
   const title = document.getElementById('new-item-title').value.trim();
   const description = document.getElementById('new-item-desc').value.trim();
   if (!title && !description) { alert('Please enter a title or description.'); return; }
-  const btn = document.querySelector('#new-idea-modal .btn-primary');
-  
+
+  // Disable all path cards to prevent double-click
+  document.querySelectorAll('#new-idea-modal .path-card').forEach(c => {
+    c.style.opacity = '0.5'; c.style.pointerEvents = 'none';
+  });
+
   try {
-    btn.textContent = 'Starting...';
-    btn.disabled = true;
-    
-    // 1. Trigger the pipeline
-    const result = await postJSON('/api/trigger', { 
-      title, 
+    // 1. Trigger the pipeline with path
+    const result = await postJSON('/api/trigger', {
+      title,
       description,
-      mode: currentMode === 'ideas' ? 'idea' : 'feature'
+      mode: 'idea',
+      path: brainstormPath || 'discovery',
     });
-    const logName = result.logFile;
-    const featureId = result.message.match(/Pipeline started/) ? null : null; // we'll get it from poll
-    
-    // 2. Upload files if any
+
+    // 2. Upload supporting files if any
     if (selectedFiles.length > 0) {
       const formData = new FormData();
       selectedFiles.forEach(f => formData.append('file', f));
-      formData.append('featureId', 'pending'); // temporary handle
+      formData.append('featureId', 'pending');
       await fetch('/api/upload', { method: 'POST', body: formData });
     }
 
-    closeModal('new-idea-modal');
+    // 3. Reset modal + close
     document.getElementById('new-item-title').value = '';
     document.getElementById('new-item-desc').value = '';
     selectedFiles = [];
     document.getElementById('file-list').innerHTML = '';
+    closeNewIdeaModal();
 
-    // 3. Open the console
-    startLiveConsole(logName);
+    // 4. Show console and refresh sidebar
+    startLiveConsole(result.logFile);
     poll();
   } catch(e) {
-    alert('Failed: ' + e.message);
-  } finally {
-    btn.textContent = 'Execute Brainstorm';
-    btn.disabled = false;
+    alert('Failed to start: ' + e.message);
+    document.querySelectorAll('#new-idea-modal .path-card').forEach(c => {
+      c.style.opacity = ''; c.style.pointerEvents = '';
+    });
   }
 }
 
@@ -1127,37 +1198,15 @@ function renderContent() {
     const prdComplete  = stageData?.prd_complete === true;
     const prdApproved  = stageData?.prd_approved === true;
     const hasConsensus = !!stageData?.consensus;
-    const brainstormPath = stageData?.path || '';
-    const isPending    = !!(itemData.stages?.pm_brainstorm);
+    const brainstormPath = stageData?.path || stageData?.pm_brainstorm_path || 'discovery';
 
-    // ── Path not yet chosen → show path selector ──
-    if (!brainstormPath && !chatHistory.length) {
-      c.innerHTML = `
-        <div style="max-width:700px; margin:0 auto; padding:32px 0;">
-          <h2 style="font-size:20px; font-weight:700; margin-bottom:8px;">Choose your discovery approach</h2>
-          <p style="color:var(--text-muted); margin-bottom:28px; font-size:14px;">Each path uses a curated set of PM skills tailored to your starting point.</p>
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:24px;">
-            <div class="path-card" onclick="selectPath('${selectedId}','discovery')">
-              <div class="path-card-icon">🔍</div>
-              <div class="path-card-title">Discovery</div>
-              <div class="path-card-desc">Brainstorm ideas from support signals, user pain points, or existing product gaps.</div>
-              <div class="path-card-skills">Brainstorm · OST · Prioritise · Assumptions</div>
-            </div>
-            <div class="path-card" onclick="selectPath('${selectedId}','competitor')">
-              <div class="path-card-icon">🏁</div>
-              <div class="path-card-title">Competitor Analysis</div>
-              <div class="path-card-desc">Map feature gaps vs. competitors. Identify market opportunities and user segments.</div>
-              <div class="path-card-skills">Competitor · Market segments · Personas · Sizing</div>
-            </div>
-            <div class="path-card" onclick="selectPath('${selectedId}','synthesis')">
-              <div class="path-card-icon">📋</div>
-              <div class="path-card-title">Synthesis</div>
-              <div class="path-card-desc">Paste Chorus notes, support tickets, or interview transcripts — agent extracts feature ideas.</div>
-              <div class="path-card-skills">Sentiment · Feature requests · Interviews · Assumptions</div>
-            </div>
-          </div>
-          <p style="font-size:12px; color:var(--text-muted); text-align:center;">You can also chat freely — a path will be inferred from context.</p>
-        </div>`;
+    // ── If pipeline is still starting (no stageData yet) ──
+    if (!stageData && !chatHistory.length) {
+      c.innerHTML = `<div class="empty" style="padding:40px;">
+        <div style="font-size:32px; margin-bottom:12px;">⏳</div>
+        <p style="font-weight:600; margin-bottom:4px;">PM Agent is warming up...</p>
+        <p style="font-size:13px; color:var(--text-muted);">The agent is reading your description and preparing the first questions. This takes about 30 seconds.</p>
+      </div>`;
       return;
     }
 
@@ -1210,7 +1259,7 @@ function renderContent() {
             <div class="chat-msg-label">${turn.role === 'user' ? 'You' : 'PM Agent'}</div>
             <div class="chat-msg-body">${esc(turn.text).replace(/\n/g,'<br>')}</div>
           </div>`).join('')
-      : `<div style="color:var(--text-muted); font-size:13px; font-style:italic; padding:16px 0;">Start by describing your idea — the PM will ask clarifying questions and build a PRD as you go.</div>`;
+      : `<div style="color:var(--text-muted); font-size:13px; font-style:italic; padding:16px 0;">The PM agent is processing your idea and will respond shortly...</div>`;
 
     c.innerHTML = `
       ${thesisHTML}

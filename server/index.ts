@@ -300,7 +300,8 @@ async function handleRequest(
     fs.writeFileSync(logFile, ""); // ensure file exists before child opens it
     const logFd = fs.openSync(logFile, "a");
 
-    const modeFlag = body.mode === "idea" ? "--mode idea" : "--mode feature";
+    const brainstormPath = body.path && ["discovery","competitor","synthesis"].includes(body.path)
+      ? body.path : "discovery";
 
     // Use process.execPath (absolute node binary) + ts-node/register
     const child = spawn(
@@ -310,6 +311,7 @@ async function handleRequest(
         path.join(agentsdlcDir, "orchestrator", "run.ts"),
         "--feature", featureText,
         "--mode",    body.mode || "feature",
+        "--path",    brainstormPath,
       ],
       {
         cwd:      agentsdlcDir,

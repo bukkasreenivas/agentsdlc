@@ -203,50 +203,37 @@ async function runChatMode(state: PipelineState, kickbackCount: number): Promise
     }
   }
 
-  // First turn — no user message yet — just initialise
+  // First turn — no pending user message in history yet.
+  // Use feature_description (from modal) as the first user message so PM responds immediately.
   if (!pendingUserMsg) {
-    const initialPrd = `# PRD: ${feature_title || feature_id}
-
-## Problem Statement
-[TBD — pending: What problem does this solve? Who experiences it?]
-
-## Target Users
-[TBD — pending: Which user roles/personas? What is their context?]
-
-## Goals / Non-Goals
-**Goals:**
-[TBD — pending: What outcomes does this feature achieve?]
-
-**Non-Goals:**
-[TBD — pending: What is explicitly out of scope?]
-
-## User Stories
-[TBD — pending: Specific jobs-to-be-done from the user's perspective]
-
-## Success Metrics
-[TBD — pending: How will we measure success? What are the KPIs?]
-
-## Out of Scope
-[TBD — pending: Future phases, related ideas not included]
-
-## Open Questions
-[TBD — pending: Unresolved decisions that need stakeholder input]
-`;
-    const content: PMModularBrainstormDeliverable = {
-      feature_id,
-      feature_title: feature_title || feature_id,
-      path: state.pm_brainstorm_path ?? "discovery",
-      chat_history: [],
-      prd_draft: initialPrd,
-      prd_complete: false,
-      prd_approved: false,
-    };
-    return {
-      current_stage: "pm_brainstorm",
-      deliverables: {
-        pm_brainstorm: makeDeliverable("pm_brainstorm", kickbackCount + 1, "PMModularBrainstormDeliverable", content, ""),
-      },
-    };
+    const initialMsg = state.feature_description || state.feature_title || "";
+    if (!initialMsg) {
+      // No description at all — this shouldn't happen, but gracefully init empty shell
+      const content: PMModularBrainstormDeliverable = {
+        feature_id,
+        feature_title: feature_title || feature_id,
+        path: state.pm_brainstorm_path ?? "discovery",
+        chat_history: [],
+        prd_draft: `# PRD: ${feature_title || feature_id}\n\n## Problem Statement\n[TBD]\n\n## Target Users\n[TBD]\n\n## Goals / Non-Goals\n**Goals:**\n[TBD]\n\n**Non-Goals:**\n[TBD]\n\n## User Stories\n[TBD]\n\n## Success Metrics\n[TBD]\n\n## Out of Scope\n[TBD]\n\n## Open Questions\n[TBD]\n`,
+        prd_complete: false,
+        prd_approved: false,
+      };
+      return {
+        current_stage: "pm_brainstorm",
+        deliverables: {
+          pm_brainstorm: makeDeliverable("pm_brainstorm", kickbackCount + 1, "PMModularBrainstormDeliverable", content, ""),
+        },
+      };
+    }
+    // Treat description as first user message — PM responds immediately
+    pendingUserMsg = initialMsg;
+    // Inject the user turn into chatHistory so runChatTurn builds the right message list
+    (chatHistory as PMChatTurn[]).push({
+      role: "user",
+      text: initialMsg,
+      timestamp: new Date().toISOString(),
+    });
+    console.log(`  [PM Chat] First turn — using feature description as opening message`);
   }
 
   // Run single chat agent turn
