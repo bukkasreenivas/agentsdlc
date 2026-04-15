@@ -38,6 +38,7 @@ export async function writeMemory(
   deliverable: Deliverable,
   status: "success" | "failed"
 ): Promise<void> {
+  if (!deliverable.memory_path) return;   // no path set — feature-store handles persistence
   const filePath = path.join(PROJECT_ROOT, deliverable.memory_path);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify({
